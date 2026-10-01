@@ -12,8 +12,8 @@ DTSTART:20261002T084500
 DURATION:PT5M
 RRULE:FREQ=DAILY
 SUMMARY:Morning Flight
-DESCRIPTION:Two minutes. Breathe\, set one intention.\nhttps://jackbraniff86-design.github.io/morning-flight/
-URL:https://jackbraniff86-design.github.io/morning-flight/
+DESCRIPTION:Two minutes. Breathe\, set one intention.\nhttps://themorningflight.co.uk/
+URL:https://themorningflight.co.uk/
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Morning Flight

@@ -3,7 +3,7 @@
 // Needs ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY; without them it prints what it would send.
 const APP_ID = process.env.ONESIGNAL_APP_ID;
 const KEY = process.env.ONESIGNAL_REST_API_KEY;
-const SITE_URL = 'https://jackbraniff86-design.github.io/morning-flight/';
+const SITE_URL = 'https://themorningflight.co.uk/';
 
 const LINES = [
   'Two minutes. Breathe, then pick one thing for today.',

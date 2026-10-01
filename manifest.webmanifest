@@ -2,7 +2,7 @@
   "name": "Morning Flight",
   "short_name": "Morning Flight",
   "description": "Two minutes every morning. Breathe, set one intention, leave with a word to carry.",
-  "start_url": "/morning-flight/",
+  "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#1d2340",
@@ -34,6 +34,6 @@
       "type": "image/svg+xml"
     }
   ],
-  "id": "/morning-flight/",
-  "scope": "/morning-flight/"
+  "id": "/",
+  "scope": "/"
 }
