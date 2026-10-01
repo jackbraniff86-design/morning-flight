@@ -211,13 +211,14 @@ textarea::placeholder{color:var(--ink-dim)}
       <div class="label">Your account</div>
       <form class="acct" id="acctEmail">
         <h2>Sign in with your email</h2>
-        <p>We'll email you a 6-digit code. No password.</p>
+        <p>We'll email you a sign-in link. No password.</p>
         <input type="email" id="acctEmailIn" placeholder="you@example.com" autocomplete="email" inputmode="email" required>
         <button class="go" type="submit">Email me a code</button>
       </form>
       <form class="acct" id="acctCode" hidden>
         <h2>Check your email</h2>
         <p id="acctSentTo"></p>
+        <p class="hint">Tap the link in the email to sign in. If the email shows a 6-digit code instead, type it here.</p>
         <input type="text" id="acctCodeIn" placeholder="6-digit code" autocomplete="one-time-code" inputmode="numeric" maxlength="10" required>
         <button class="go" type="submit">Sign in</button>
         <button class="quiet" type="button" id="acctBack">Use a different email</button>
@@ -306,8 +307,8 @@ const ONESIGNAL_APP_ID='2311306b-a91f-464e-b38d-b84c7edad3a2';
 // Shown on the share card and in the share text. Change when there's a domain.
 const SITE_URL='https://themorningflight.co.uk/';
 // Paste the Supabase project URL and anon (public) key here to switch on email sign-in (Project Settings > API).
-const SUPABASE_URL='';
-const SUPABASE_ANON_KEY='';
+const SUPABASE_URL='https://xrlwmyqnyinbkbwmmnqv.supabase.co';
+const SUPABASE_ANON_KEY='sb_publishable_RuPOshyOKW0cff-mIzGeYw_wrRURjdj';
 
 // ---- storage: this browser only, anonymous ----
 const KEY='mf_v1';
@@ -848,9 +849,9 @@ for(const id of ['acctEmailIn','acctCodeIn']) $(id).addEventListener('keydown',e
 $('acctEmail').addEventListener('submit',async e=>{
   e.preventDefault(); const email=$('acctEmailIn').value.trim(); if(!email) return;
   $('acctMsg').textContent='Sending…';
-  const {error}=await sb.auth.signInWithOtp({email,options:{shouldCreateUser:true}});
+  const {error}=await sb.auth.signInWithOtp({email,options:{shouldCreateUser:true,emailRedirectTo:SITE_URL}});
   if(error){ $('acctMsg').textContent=`Couldn't send the code: ${error.message}`; return; }
-  $('acctSentTo').textContent=`We sent a code to ${email}. It can take a minute.`;
+  $('acctSentTo').textContent=`We sent an email to ${email}. It can take a minute.`;
   $('acctEmail').hidden=true; $('acctCode').hidden=false; $('acctMsg').textContent=''; $('acctCodeIn').value=''; $('acctCodeIn').focus();
 });
 $('acctBack').addEventListener('click',()=>{ $('acctCode').hidden=true; $('acctEmail').hidden=false; $('acctMsg').textContent=''; });
@@ -874,8 +875,10 @@ async function startAccount(){
   try{
     await new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js'; sc.onload=res; sc.onerror=rej; document.head.appendChild(sc); });
     sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-    const {data}=await sb.auth.getSession();
+    const {data}=await sb.auth.getSession(); // also picks up a sign-in link that opened this page
     user=data.session?data.session.user:null;
+    if(location.hash.includes('access_token')||location.hash.includes('error')) history.replaceState(null,'',location.pathname);
+    if(user&&window.OneSignalDeferred) OneSignalDeferred.push(OS=>OS.login(user.id));
     if(user){ await pullAndMerge(); refreshScreen(); }
   }catch(err){ console.warn('Account unavailable',err); }
   accountUI();
