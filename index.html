@@ -67,6 +67,24 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
 .word{font-family:var(--f-display);font-weight:500;font-size:clamp(48px,14vw,92px);line-height:1;color:var(--glow);letter-spacing:-.01em}
 .starsky{width:100%;max-width:320px;height:84px;border-top:1px solid rgba(255,255,255,.12);border-bottom:1px solid rgba(255,255,255,.12)}
 .hint{font-size:13px;color:var(--ink-dim)}
+/* coach: a quiet note in the sky, marked by a small sun */
+.coach{width:100%;max-width:360px;text-align:left;display:grid;grid-template-columns:18px 1fr;gap:4px 10px;align-items:start;background:rgba(20,22,38,.45);border:1px solid rgba(255,201,138,.28);border-radius:16px;padding:14px 16px;line-height:1.5;font-size:15px}
+.coach::before{content:"";width:10px;height:10px;margin-top:6px;border-radius:50%;background:var(--glow);box-shadow:0 0 12px var(--glow)}
+.coach b{font-weight:600}
+.coach small{grid-column:2;font-size:13px;color:var(--ink-dim)}
+#ovWeek{place-items:start center;padding-top:calc(56px + env(safe-area-inset-top,0px))}
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;width:100%;max-width:340px}
+.days div{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11px;letter-spacing:.08em;color:var(--ink-dim)}
+.days i{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);display:block}
+.days .flown i{background:rgba(244,239,230,.25);border-color:transparent}
+.days .kept i{background:var(--glow);box-shadow:0 0 10px rgba(255,201,138,.6)}
+.days .today{color:var(--ink)}
+.sum{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;margin:0;width:100%;max-width:360px;text-align:left;font-size:15px}
+.sum dt{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);padding-top:2px}
+.sum dd{margin:0;min-width:0}
+textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:16px;padding:12px 16px;width:100%;max-width:360px;resize:vertical;outline:none;-webkit-user-select:text;user-select:text}
+textarea:focus{border-color:var(--glow)}
+textarea::placeholder{color:var(--ink-dim)}
 #ovLog{place-items:start center;padding-top:calc(56px + env(safe-area-inset-top,0px))}
 .log{list-style:none;margin:0;padding:0;width:100%;display:flex;flex-direction:column;text-align:left}
 .log li{display:flex;flex-direction:column;gap:2px;padding:12px 0;border-top:1px solid rgba(255,255,255,.12)}
@@ -103,6 +121,7 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
   <!-- Arrive -->
   <div class="overlay" id="ovStart" hidden>
     <div class="card">
+      <div class="coach" id="coachReply" hidden></div>
       <div class="label" id="dayNo">Flight #1</div>
       <h1>Morning<br>Flight</h1>
       <p>Two minutes. Hold the screen as you breathe in, let go as you breathe out. There's nothing to get wrong.</p>
@@ -145,9 +164,25 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
       <div class="label">Your log</div>
       <h2 id="logHead"></h2>
       <p id="logNote" hidden></p>
+      <button class="ghost" data-week hidden>Your week</button>
       <ol class="log" id="logList"></ol>
       <p class="hint">Saved on this device only.</p>
       <button class="ghost" id="btnLogBack">Back</button>
+    </div>
+  </div>
+
+  <!-- Weekly reflection -->
+  <div class="overlay" id="ovWeek" hidden>
+    <div class="card">
+      <div class="label" id="weekRange">This week</div>
+      <h2 id="weekHead"></h2>
+      <div class="days" id="weekDays" aria-label="Mornings flown this week"></div>
+      <dl class="sum" id="weekSum"></dl>
+      <div class="coach" id="weekCoach"></div>
+      <label class="said" for="weekAnswer" id="weekQ"></label>
+      <textarea id="weekAnswer" rows="3" maxlength="400" placeholder="A line or two. Only you see this."></textarea>
+      <div class="row"><button class="go" id="btnWeekSave">Save and close</button></div>
+      <span class="hint" id="weekSaved" aria-live="polite"></span>
     </div>
   </div>
 
@@ -159,7 +194,8 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
       <p class="said" id="intentBack"></p>
       <canvas class="starsky" id="starSky" aria-hidden="true"></canvas>
       <p class="hint" id="skyLine"></p>
-      <p class="hint" id="weekLine" hidden></p>
+      <div class="coach" id="coachDay" hidden></div>
+      <button class="go" id="btnWeekReady" hidden>Your week is ready</button>
       <div class="row"><button class="go" id="btnShare">Share today's word</button></div>
       <span class="hint" id="shareMsg" aria-live="polite"></span>
       <div class="remind" id="remind" hidden>
@@ -168,7 +204,7 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
         <div id="remindForm"></div>
         <button class="quiet" id="btnRemindOff">I'm already signed up</button>
       </div>
-      <div class="row"><button class="quiet" data-log>Your log</button><button class="quiet" id="btnAgain">Fly again</button></div>
+      <div class="row"><button class="quiet" data-log>Your log</button><button class="quiet" data-week hidden>Your week</button><button class="quiet" id="btnAgain">Fly again</button></div>
     </div>
   </div>
 </div>
@@ -322,7 +358,7 @@ function frame(t){ const dt=Math.min(0.05,(t-last)/1000); last=t; update(dt); dr
 requestAnimationFrame(frame);
 
 // ---- flow: check → arrive → settle → intend → lift → card ----
-const overlays=['ovCheck','ovStart','ovIntend','ovEnd','ovLog'];
+const overlays=['ovCheck','ovStart','ovIntend','ovEnd','ovLog','ovWeek'];
 function show(id){ overlays.forEach(o=>$(o).hidden=o!==id); }
 function clearCues(){ $('cue').textContent=''; $('cueSub').textContent=''; }
 
@@ -331,8 +367,9 @@ function pendingCheck(){ // most recent earlier flight with an unanswered intent
   const d=k&&store.days[k];
   return d&&d.intent&&!d.followed ? {k,d} : null;
 }
-function openStart(){
+function openStart(reply){
   state='start'; clearCues(); $('phase').textContent='';
+  const cr=$('coachReply'); cr.hidden=!reply; if(reply) setCoach(cr,reply);
   $('dayNo').textContent=`Flight #${dayIdx}`;
   const n=starCount();
   $('starsLine').textContent=n?`${n} star${n>1?'s':''} in your sky`:'Your first star is waiting';
@@ -351,7 +388,8 @@ function begin(){
 }
 $('ovCheck').addEventListener('click',e=>{
   const f=e.target.dataset.followed; if(!f) return;
-  store.days[$('ovCheck').dataset.day].followed=f; save(); openStart();
+  const k=$('ovCheck').dataset.day;
+  store.days[k].followed=f; save(); openStart(coachAfterCheck(k));
 });
 $('moods').addEventListener('click',e=>{
   const m=e.target.dataset.mood; if(!m) return;
@@ -394,12 +432,9 @@ function openEnd(){
   $('word').textContent=word;
   $('intentBack').textContent=intentLine(d)||'Go gently.';
   $('skyLine').textContent=`Morning #${n} · ${n} star${n>1?'s':''} in your sky`;
-  // the week so far: intentions you've answered for
-  const cut=keyOf(new Date(now.getFullYear(),now.getMonth(),now.getDate()-7));
-  const answered=Object.entries(store.days).filter(([k,v])=>k>=cut&&v.followed);
-  const kept=answered.filter(([,v])=>v.followed!=='no').length;
-  $('weekLine').hidden=answered.length<2;
-  $('weekLine').textContent=`You followed through on ${kept} of your last ${answered.length} intentions.`;
+  const cd=coachToday(); $('coachDay').hidden=!cd; if(cd) setCoach($('coachDay'),cd);
+  const wk=weekData(), canWeek=weekButtons();
+  $('btnWeekReady').hidden=!(canWeek&&now.getDay()===0&&!(store.reflections||{})[wk.key]);
   $('shareMsg').textContent='';
   showRemind();
   show('ovEnd'); drawStarSky(n);
@@ -437,7 +472,7 @@ function openLog(from){
   for(const [k,d] of days){
     const [yy,mm,dd]=k.split('-').map(Number), date=new Date(yy,mm-1,dd);
     const idx=Math.floor((Date.UTC(yy,mm-1,dd)-LAUNCH)/864e5)+1;
-    const li=document.createElement('li');
+    const li=document.createElement('li'); li.dataset.k=k;
     const head=document.createElement('div'); head.className='when';
     const left=document.createElement('span'); left.textContent=date.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+(d.mood?` · ${MOOD[d.mood]}`:'');
     const w=document.createElement('b'); w.textContent=wordOn(idx);
@@ -446,10 +481,123 @@ function openLog(from){
     if(d.intent){ const out=document.createElement('div'); out.className='out'; out.textContent=OUT[d.followed]||(k===todayKey?'We\'ll ask tomorrow':'Not answered'); li.appendChild(out); }
     list.appendChild(li);
   }
-  show('ovLog'); $('ovLog').scrollTop=0;
+  const refl=Object.entries(store.reflections||{}).filter(([,r])=>r.answer).sort((a,b)=>a[0]<b[0]?1:-1);
+  for(const [k,r] of refl){
+    const [yy,mm,dd]=k.split('-').map(Number);
+    const li=document.createElement('li');
+    const head=document.createElement('div'); head.className='when';
+    const left=document.createElement('span'); left.textContent=`Week of ${new Date(yy,mm-1,dd).toLocaleDateString('en-GB',{day:'numeric',month:'short'})} · reflection`;
+    head.appendChild(left); li.appendChild(head);
+    const q=document.createElement('div'); q.className='out'; q.textContent=r.q; li.appendChild(q);
+    const a=document.createElement('div'); a.className='what'; a.textContent=r.answer; li.appendChild(a);
+    // slot the reflection above that week's days
+    const after=[...list.children].find(el=>el.dataset.k&&el.dataset.k<k);
+    list.insertBefore(li,after||null);
+  }
+  weekButtons(); show('ovLog'); $('ovLog').scrollTop=0;
 }
 document.querySelectorAll('[data-log]').forEach(b=>b.addEventListener('click',()=>openLog(b.closest('.overlay').id)));
 $('btnLogBack').addEventListener('click',()=>logFrom==='ovEnd'?openEnd():openStart());
+
+// ---- mindset coach ----
+// Rule-based: it reads your own log and says one useful thing. No outcome claims.
+// Grounded in implementation intentions (plan the when), shrinking the task after misses, and noticing patterns.
+function setCoach(el,[main,sub]){ el.textContent=''; const m=document.createElement('span'); m.textContent=main; el.appendChild(m); if(sub){ const s2=document.createElement('small'); s2.textContent=sub; el.appendChild(s2); } el.hidden=false; }
+const pastDays=()=>Object.entries(store.days).filter(([k])=>k<todayKey).sort((a,b)=>a[0]<b[0]?1:-1);
+function slotStats(){ // follow-through by time of day
+  const by={};
+  for(const [,d] of Object.entries(store.days)){ if(!d.followed||!d.when) continue; const b=by[d.when]||(by[d.when]={n:0,kept:0}); b.n++; if(d.followed!=='no') b.kept++; }
+  return by;
+}
+const slotName=w=>WHEN[w].toLowerCase();
+// Straight after "Did you do it?"
+function coachAfterCheck(k){
+  const d=store.days[k], f=d.followed;
+  const answered=pastDays().filter(([,x])=>x.followed);
+  let run=0; for(const [,x] of answered){ if(x.followed===f||(f!=='no'&&x.followed!=='no')) run++; else break; }
+  if(f==='yes'){
+    if(run>=3) return [`That's ${run} in a row you've followed through on.`,'The habit is the plan-then-do, more than any one task. Keep the same rhythm today.'];
+    return ['Done. That is what the morning is for.','Something similar again today, or something new?'];
+  }
+  if(f==='partly') return ['Partly still counts.','If it keeps coming out partly, the plan was probably a bit big. Try a smaller version today.'];
+  if(run>=2) return [`That's ${run} misses in a row. That usually means the plans are too big, not that you are failing.`,'Today, pick something you could do in five minutes, and tie it to a set time.'];
+  const by=slotStats(), b=d.when&&by[d.when];
+  if(b&&b.n>=3&&b.kept/b.n<0.5) return [`Plans for ${slotName(d.when)} are the ones that slip: ${b.kept} of ${b.n} kept.`,'Try a different time of day for today\'s one thing.'];
+  return ['Not today is fine. It\'s just information.','Was it the thing, or the timing? Change one of them today.'];
+}
+// On the card after landing
+function coachToday(){
+  const d=today(), by=slotStats();
+  const recent=Object.entries(store.days).sort((a,b)=>a[0]<b[0]?1:-1).slice(0,5).map(([,x])=>x.mood).filter(Boolean);
+  const tiredN=recent.filter(m=>m==='tired').length, wiredN=recent.filter(m=>m==='wired').length;
+  if(recent.length>=4&&tiredN>=3) return [`You've said tired ${tiredN} of your last ${recent.length} mornings.`,'That is a pattern worth noticing. Is tonight a chance for an earlier night?'];
+  if(recent.length>=4&&wiredN>=3) return [`Wired ${wiredN} of your last ${recent.length} mornings.`,'Before you open anything, take three more slow out-breaths, the same as the flight.'];
+  if(d.intent&&d.when){ const b=by[d.when];
+    if(b&&b.n>=3&&b.kept/b.n<0.5) return [`Heads up: plans for ${slotName(d.when)} have stuck ${b.kept} of ${b.n} times.`,'Decide now what you will do just before it, so it has a trigger.'];
+    if(b&&b.n>=3&&b.kept/b.n>=0.75) return [`${WHEN[d.when]} is your strong time: ${b.kept} of ${b.n} kept.`,'Good call putting it there.'];
+  }
+  const M={
+    tired:['Tired today. Keep the one thing small and protect it.','Doing it at all matters more than doing it well.'],
+    wired:['Wired today. Do the one thing before the inbox.','When your head is busy, the plan you made in calm is the one to trust.'],
+    flat:['Flat days don\'t need big plans.','Get the one thing done and call it a good day.'],
+    good:['A good morning. Spend it on the thing you would usually put off.','Good mornings are when hard starts feel easiest.'],
+  };
+  if(!d.intent) return ['No plan today, and that is allowed.','Tomorrow, try naming one small thing. Writing down when you will do it makes it more likely to happen.'];
+  return M[d.mood]||null;
+}
+
+// ---- weekly reflection: Monday to Sunday ----
+const QUESTIONS=['What made the ones you kept easier?','What got in the way this week?','When did you feel most like yourself this week?','What is one thing to carry into next week?','What would make next week 10% easier?'];
+function weekData(){
+  const mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-((now.getDay()+6)%7));
+  const keys=[...Array(7)].map((_,i)=>keyOf(new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+i)));
+  const days=keys.map(k=>[k,store.days[k]||{}]);
+  return {key:keys[0], keys, mon, days, flown:days.filter(([,d])=>d.done)};
+}
+function weekCoach(w){
+  const ans=w.flown.filter(([,d])=>d.followed), kept=ans.filter(([,d])=>d.followed!=='no');
+  const by={}; for(const [,d] of ans){ if(!d.when) continue; const b=by[d.when]||(by[d.when]={n:0,kept:0}); b.n++; if(d.followed!=='no') b.kept++; }
+  const slots=Object.entries(by).filter(([,b])=>b.n>=2).sort((a,b)=>b[1].kept/b[1].n-a[1].kept/a[1].n);
+  if(ans.length>=3&&kept.length/ans.length>=0.75) return ['Strong week. You did most of what you set out to do.','Next week, keep the same size of plan. Resist the urge to make them bigger.'];
+  if(slots.length>=2&&slots[0][1].kept/slots[0][1].n>slots[slots.length-1][1].kept/slots[slots.length-1][1].n)
+    return [`Your plans for ${slotName(slots[0][0])} stuck best this week, and ${slotName(slots[slots.length-1][0])} least.`,`Next week, put your most important one thing ${slotName(slots[0][0])}.`];
+  if(ans.length>=3&&kept.length/ans.length<0.5) return ['A hard week for follow-through.','Next week, halve the size of each plan. Small and done beats big and skipped.'];
+  if(w.flown.length>=5) return [`${w.flown.length} mornings this week. That is the habit forming.`,'Next week, see if you can name the time for every intention.'];
+  return ['You showed up this week. That is the hard part.','Next week, aim for one more morning than this one.'];
+}
+function weekButtons(){ const ok=weekData().flown.length>=3; document.querySelectorAll('[data-week]').forEach(b=>b.hidden=!ok); return ok; }
+let weekFrom='ovEnd';
+function openWeek(from){
+  weekFrom=from;
+  const w=weekData(), ans=w.flown.filter(([,d])=>d.followed), kept=ans.filter(([,d])=>d.followed!=='no');
+  const fmt=d=>d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+  $('weekRange').textContent=`Week of ${fmt(w.mon)}`;
+  $('weekHead').textContent=`${w.flown.length} morning${w.flown.length===1?'':'s'}`+(ans.length?` · ${kept.length} of ${ans.length} kept`:'');
+  const dd=$('weekDays'); dd.innerHTML='';
+  w.days.forEach(([k,d],i)=>{ const el=document.createElement('div'); el.className=(d.done?'flown ':'')+(d.followed&&d.followed!=='no'?'kept ':'')+(k===todayKey?'today':''); el.innerHTML='<i></i>'; el.append('MTWTFSS'[i]); dd.appendChild(el); });
+  const sum=$('weekSum'); sum.innerHTML='';
+  const row=(t,v)=>{ if(!v) return; const a=document.createElement('dt'); a.textContent=t; const b=document.createElement('dd'); b.textContent=v; sum.append(a,b); };
+  const moods={}; w.flown.forEach(([,d])=>{ if(d.mood) moods[d.mood]=(moods[d.mood]||0)+1; });
+  row('Mornings',Object.entries(moods).sort((a,b)=>b[1]-a[1]).map(([m,n])=>`${MOOD[m]} ${n}`).join(' · '));
+  row('Kept',kept.map(([,d])=>d.intent).join(', '));
+  row('Missed',ans.filter(([,d])=>d.followed==='no').map(([,d])=>d.intent).join(', '));
+  setCoach($('weekCoach'),weekCoach(w));
+  const q=QUESTIONS[Math.floor((dayUTC(w.mon)-LAUNCH)/(7*864e5)+70)%QUESTIONS.length];
+  $('weekQ').textContent=q;
+  const r=(store.reflections||{})[w.key];
+  $('weekAnswer').value=r?r.answer:''; $('weekSaved').textContent='';
+  show('ovWeek'); $('ovWeek').scrollTop=0;
+}
+document.querySelectorAll('[data-week]').forEach(b=>b.addEventListener('click',()=>openWeek(b.closest('.overlay').id)));
+$('btnWeekReady').addEventListener('click',()=>openWeek('ovEnd'));
+$('weekAnswer').addEventListener('keydown',e=>e.stopPropagation());
+$('btnWeekSave').addEventListener('click',()=>{
+  const w=weekData(), a=$('weekAnswer').value.trim();
+  store.reflections=store.reflections||{};
+  if(a) store.reflections[w.key]={q:$('weekQ').textContent,answer:a,at:todayKey}; else delete store.reflections[w.key];
+  save();
+  weekFrom==='ovLog'?openLog(logFrom):openEnd();
+});
 
 function showRemind(){
   const local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
