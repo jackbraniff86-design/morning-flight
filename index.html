@@ -67,6 +67,13 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
 .word{font-family:var(--f-display);font-weight:500;font-size:clamp(48px,14vw,92px);line-height:1;color:var(--glow);letter-spacing:-.01em}
 .starsky{width:100%;max-width:320px;height:84px;border-top:1px solid rgba(255,255,255,.12);border-bottom:1px solid rgba(255,255,255,.12)}
 .hint{font-size:13px;color:var(--ink-dim)}
+#ovLog{place-items:start center;padding-top:calc(56px + env(safe-area-inset-top,0px))}
+.log{list-style:none;margin:0;padding:0;width:100%;display:flex;flex-direction:column;text-align:left}
+.log li{display:flex;flex-direction:column;gap:2px;padding:12px 0;border-top:1px solid rgba(255,255,255,.12)}
+.log .when{display:flex;justify-content:space-between;gap:12px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim)}
+.log .when b{color:var(--glow);font-weight:600}
+.log .what{font-family:var(--f-display);font-size:18px;line-height:1.3}
+.log .out{font-size:13px;color:var(--ink-dim)}
 .remind{width:100%;max-width:340px;display:flex;flex-direction:column;gap:8px;align-items:center;border-top:1px solid rgba(255,255,255,.12);padding-top:14px}
 .remind iframe{width:100%;height:60px;border:0;border-radius:12px;background:transparent}
 .remind .todo{width:100%;border:1px dashed var(--line);border-radius:12px;padding:14px;font-size:13px;color:var(--ink-dim)}
@@ -107,6 +114,7 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
         <button class="pick" data-mood="good">Good</button>
       </div>
       <div class="hint" id="starsLine"></div>
+      <button class="quiet" data-log hidden>Your log</button>
     </div>
   </div>
 
@@ -131,6 +139,18 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
     </div>
   </div>
 
+  <!-- Log -->
+  <div class="overlay" id="ovLog" hidden>
+    <div class="card">
+      <div class="label">Your log</div>
+      <h2 id="logHead"></h2>
+      <p id="logNote" hidden></p>
+      <ol class="log" id="logList"></ol>
+      <p class="hint">Saved on this device only.</p>
+      <button class="ghost" id="btnLogBack">Back</button>
+    </div>
+  </div>
+
   <!-- Card -->
   <div class="overlay" id="ovEnd" hidden>
     <div class="card">
@@ -148,7 +168,7 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
         <div id="remindForm"></div>
         <button class="quiet" id="btnRemindOff">I'm already signed up</button>
       </div>
-      <button class="quiet" id="btnAgain">Fly again</button>
+      <div class="row"><button class="quiet" data-log>Your log</button><button class="quiet" id="btnAgain">Fly again</button></div>
     </div>
   </div>
 </div>
@@ -170,7 +190,8 @@ const todayKey=keyOf(now);
 const dayIdx=Math.max(1,Math.floor((dayUTC(now)-LAUNCH)/864e5)+1);
 // One word a day, same for everyone. 30 days before a repeat.
 const WORDS=['Steady','Open','Patient','Light','Kind','Clear','Present','Easy','Brave','Gentle','Curious','Enough','Slow','Warm','Ready','Quiet','Honest','Loose','Awake','Here','Soft','Grounded','Willing','Simple','Calm','Bright','Rested','Free','Sure','Begin'];
-const word=WORDS[(dayIdx-1)%WORDS.length];
+const wordOn=idx=>WORDS[(((idx-1)%WORDS.length)+WORDS.length)%WORDS.length];
+const word=wordOn(dayIdx);
 // Ideas that already carry their own time skip the "when" question.
 const IDEAS=[['A walk outside'],['The hard task first','morning'],['A proper lunch','lunch'],['Call someone I love'],['Move my body'],['An early night','night'],['Ten quiet minutes'],['Drink more water','day'],['Finish one thing'],['Say no to one thing','day'],['Time off my phone','night'],['Cook something good','night']];
 const WHEN={morning:'This morning',lunch:'At lunch',evening:'After work',night:'Tonight',day:'Today'};
@@ -301,7 +322,7 @@ function frame(t){ const dt=Math.min(0.05,(t-last)/1000); last=t; update(dt); dr
 requestAnimationFrame(frame);
 
 // ---- flow: check → arrive → settle → intend → lift → card ----
-const overlays=['ovCheck','ovStart','ovIntend','ovEnd'];
+const overlays=['ovCheck','ovStart','ovIntend','ovEnd','ovLog'];
 function show(id){ overlays.forEach(o=>$(o).hidden=o!==id); }
 function clearCues(){ $('cue').textContent=''; $('cueSub').textContent=''; }
 
@@ -315,6 +336,7 @@ function openStart(){
   $('dayNo').textContent=`Flight #${dayIdx}`;
   const n=starCount();
   $('starsLine').textContent=n?`${n} star${n>1?'s':''} in your sky`:'Your first star is waiting';
+  document.querySelector('#ovStart [data-log]').hidden=!n;
   show('ovStart');
 }
 function begin(){
@@ -391,6 +413,43 @@ function drawStarSky(n){ // one star per morning; the newest glows
     g.fillStyle=newest?'#ffc98a':'rgba(244,239,230,.85)'; g.beginPath(); g.arc(x*r.width,sy*r.height,newest?2.6:sr,0,7); g.fill(); }
 }
 $('btnAgain').addEventListener('click',openStart);
+
+// ---- log: every flight, what you intended, whether you did it ----
+const MOOD={tired:'Tired',wired:'Wired',flat:'Flat',good:'Good'};
+const OUT={yes:'Done',partly:'Partly done',no:'Not that day'};
+let logFrom='ovStart';
+function logNote(days){ // one plain observation, only once there's enough to go on
+  const ans=days.filter(([,d])=>d.followed&&d.when);
+  if(ans.length<4) return '';
+  const by={}; for(const [,d] of ans){ const b=by[d.when]||(by[d.when]={n:0,kept:0}); b.n++; if(d.followed!=='no') b.kept++; }
+  const slots=Object.entries(by).filter(([,b])=>b.n>=2).sort((a,b)=>b[1].kept/b[1].n-a[1].kept/a[1].n);
+  if(slots.length<2||slots[0][1].kept/slots[0][1].n===slots[slots.length-1][1].kept/slots[slots.length-1][1].n) return '';
+  const [w,b]=slots[0];
+  return `You follow through most on things you plan for ${WHEN[w].toLowerCase()}: ${b.kept} of ${b.n}.`;
+}
+function openLog(from){
+  logFrom=from;
+  const days=Object.entries(store.days).filter(([,d])=>d.done).sort((a,b)=>a[0]<b[0]?1:-1);
+  const ans=days.filter(([,d])=>d.followed), kept=ans.filter(([,d])=>d.followed!=='no').length;
+  $('logHead').textContent=`${days.length} morning${days.length===1?'':'s'}`+(ans.length?` · ${kept} of ${ans.length} intentions kept`:'');
+  const note=logNote(days); $('logNote').hidden=!note; $('logNote').textContent=note;
+  const list=$('logList'); list.innerHTML='';
+  for(const [k,d] of days){
+    const [yy,mm,dd]=k.split('-').map(Number), date=new Date(yy,mm-1,dd);
+    const idx=Math.floor((Date.UTC(yy,mm-1,dd)-LAUNCH)/864e5)+1;
+    const li=document.createElement('li');
+    const head=document.createElement('div'); head.className='when';
+    const left=document.createElement('span'); left.textContent=date.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+(d.mood?` · ${MOOD[d.mood]}`:'');
+    const w=document.createElement('b'); w.textContent=wordOn(idx);
+    head.append(left,w); li.appendChild(head);
+    const what=document.createElement('div'); what.className='what'; what.textContent=intentLine(d)||'Just flew'; li.appendChild(what);
+    if(d.intent){ const out=document.createElement('div'); out.className='out'; out.textContent=OUT[d.followed]||(k===todayKey?'We\'ll ask tomorrow':'Not answered'); li.appendChild(out); }
+    list.appendChild(li);
+  }
+  show('ovLog'); $('ovLog').scrollTop=0;
+}
+document.querySelectorAll('[data-log]').forEach(b=>b.addEventListener('click',()=>openLog(b.closest('.overlay').id)));
+$('btnLogBack').addEventListener('click',()=>logFrom==='ovEnd'?openEnd():openStart());
 
 function showRemind(){
   const local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
