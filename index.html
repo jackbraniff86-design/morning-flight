@@ -103,6 +103,7 @@ textarea::placeholder{color:var(--ink-dim)}
 .log .what{font-family:var(--f-display);font-size:18px;line-height:1.3}
 .log .out{font-size:13px;color:var(--ink-dim)}
 .remind{width:100%;max-width:340px;display:flex;flex-direction:column;gap:8px;align-items:center;border-top:1px solid rgba(255,255,255,.12);padding-top:14px}
+.push{display:flex;flex-direction:column;align-items:center;gap:8px;width:100%}
 .remind iframe{width:100%;height:60px;border:0;border-radius:12px;background:transparent}
 .remind .todo{width:100%;border:1px dashed var(--line);border-radius:12px;padding:14px;font-size:13px;color:var(--ink-dim)}
 </style>
@@ -216,8 +217,14 @@ textarea::placeholder{color:var(--ink-dim)}
       <div class="remind" id="calRemind" hidden>
         <div class="said">Remind me every morning</div>
         <div class="row"><label class="hint" for="remindTime">At</label><select id="remindTime"><option value="05:00">05:00</option><option value="05:15">05:15</option><option value="05:30">05:30</option><option value="05:45">05:45</option><option value="06:00">06:00</option><option value="06:15">06:15</option><option value="06:30">06:30</option><option value="06:45">06:45</option><option value="07:00" selected>07:00</option><option value="07:15">07:15</option><option value="07:30">07:30</option><option value="07:45">07:45</option><option value="08:00">08:00</option><option value="08:15">08:15</option><option value="08:30">08:30</option><option value="08:45">08:45</option><option value="09:00">09:00</option><option value="09:15">09:15</option><option value="09:30">09:30</option><option value="09:45">09:45</option><option value="10:00">10:00</option><option value="10:15">10:15</option><option value="10:30">10:30</option><option value="10:45">10:45</option></select></div>
-        <div class="row"><a class="ghost" id="calApple" href="#">iPhone / Apple Calendar</a><a class="ghost" id="calGoogle" href="#" target="_blank" rel="noopener">Google Calendar (signed in)</a></div>
-        <p class="hint" id="calMsg"></p>
+        <div class="push" id="pushBox" hidden>
+          <button class="go" id="btnPush" hidden>Turn on morning notification</button>
+          <p class="hint" id="pushMsg" aria-live="polite"></p>
+        </div>
+        <div class="push" id="calBox">
+          <div class="row"><a class="ghost" id="calApple" href="#">iPhone / Apple Calendar</a><a class="ghost" id="calGoogle" href="#" target="_blank" rel="noopener">Google Calendar (signed in)</a></div>
+          <p class="hint" id="calMsg"></p>
+        </div>
       </div>
       <div class="remind" id="remind" hidden>
         <div class="said">Same time tomorrow?</div>
@@ -257,6 +264,8 @@ const WHEN={morning:'After my coffee',lunch:'At lunch',evening:'When I get home'
 // ---- daily reminder signup ----
 // Paste the Beehiiv subscribe form ID here to switch the signup on. Asked for only after a finished flight.
 const BEEHIIV_FORM_ID='';
+// Paste the OneSignal App ID here to switch on push notifications (Settings > Keys & IDs in OneSignal).
+const ONESIGNAL_APP_ID='';
 // Shown on the share card and in the share text. Change when there's a domain.
 const SITE_URL='https://jackbraniff86-design.github.io/morning-flight/';
 
@@ -666,12 +675,44 @@ function calLinks(){
   const q=new URLSearchParams({action:'TEMPLATE',text:'Morning Flight',dates:`${f(d)}/${f(e)}`,recur:'RRULE:FREQ=DAILY',details:`Two minutes. Breathe, set one intention.\n${SITE_URL}`});
   $('calGoogle').href=`https://calendar.google.com/calendar/render?${q}`;
 }
-$('remindTime').addEventListener('change',()=>{ calLinks(); store.calTime=$('remindTime').value; save(); });
+$('remindTime').addEventListener('change',()=>{ calLinks(); store.calTime=$('remindTime').value; save(); if(store.pushOn) tagTime(); });
+
+// ---- push notifications (OneSignal). A daily GitHub Action sends each person's notification at their chosen local time. ----
+const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const installed=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const pushCapable='Notification' in window&&'serviceWorker' in navigator&&'PushManager' in window;
+window.OneSignalDeferred=window.OneSignalDeferred||[];
+if(ONESIGNAL_APP_ID&&pushCapable){
+  const scope=location.pathname.replace(/[^/]*$/,'');
+  const sdk=document.createElement('script'); sdk.src='https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js'; sdk.defer=true; document.head.appendChild(sdk);
+  OneSignalDeferred.push(async OS=>{
+    await OS.init({appId:ONESIGNAL_APP_ID, serviceWorkerPath:scope.slice(1)+'OneSignalSDKWorker.js', serviceWorkerParam:{scope}, allowLocalhostAsSecureOrigin:true});
+    if(store.pushOn&&!OS.Notifications.permission){ store.pushOn=false; save(); showRemind(); } // switched off in Settings
+  });
+}
+function tagTime(){ const hm=$('remindTime').value.replace(':',''); OneSignalDeferred.push(OS=>OS.User.addTag('remind_time',hm)); }
+$('btnPush').addEventListener('click',()=>{
+  $('pushMsg').textContent='Asking your phone…';
+  OneSignalDeferred.push(async OS=>{
+    try{ await OS.Notifications.requestPermission(); }catch(e){}
+    if(OS.Notifications.permission){ store.pushOn=true; store.calTime=$('remindTime').value; save(); tagTime(); showRemind(); }
+    else $('pushMsg').textContent='Notifications are off for this app. Allow them in your phone\'s Settings, or use your calendar below.';
+  });
+});
+function showPush(){
+  const box=$('pushBox'), btn=$('btnPush'), msg=$('pushMsg');
+  box.hidden=!ONESIGNAL_APP_ID; if(box.hidden) return false;
+  if(store.pushOn){ btn.hidden=true; msg.textContent=`Morning notification on at ${$('remindTime').value}. Change the time above any day.`; return true; }
+  if(isIOS&&!installed){ btn.hidden=true; msg.textContent='For a morning notification, add Morning Flight to your Home Screen: tap Share, then Add to Home Screen, and open it from there. Or use your calendar below.'; return false; }
+  if(!pushCapable){ box.hidden=true; return false; }
+  btn.hidden=false; msg.textContent='One notification a day at the time you pick. Nothing else.'; return true;
+}
 for(const id of ['calApple','calGoogle']) $(id).addEventListener('click',()=>{ store.calTime=$('remindTime').value; store.calAdded=true; save(); });
 
 function showRemind(){
   if(store.calTime&&[...$('remindTime').options].some(o=>o.value===store.calTime)) $('remindTime').value=store.calTime;
   calLinks(); $('calRemind').hidden=false;
+  const pushOk=showPush(); $('calBox').hidden=pushOk;
   // Google's add-event page only works when you're signed in to Google in this browser; on iPhone, Apple Calendar is the reliable path.
   $('calGoogle').hidden=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   $('calMsg').textContent=store.calAdded?'Added? You can change the time any day.':'On iPhone, tap Subscribe. For the alert to sound, switch off Remove Alerts on that screen.';
