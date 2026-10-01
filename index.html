@@ -53,6 +53,8 @@ canvas#c{display:block;width:100%;height:100%;touch-action:none}
 .card p{margin:0;color:var(--ink-dim);line-height:1.5;max-width:34ch}
 .card .said{color:var(--ink);font-family:var(--f-display);font-size:20px;line-height:1.3}
 .label{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim)}
+input[type=time]{font:inherit;font-size:16px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:9px 14px;outline:none;font-variant-numeric:tabular-nums}
+input[type=time]:focus{border-color:var(--glow)}
 input[type=text]{font:inherit;font-size:17px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:12px 18px;width:100%;max-width:320px;text-align:center;outline:none;-webkit-user-select:text;user-select:text}
 input[type=text]:focus{border-color:var(--glow)}
 input::placeholder{color:var(--ink-dim)}
@@ -87,6 +89,10 @@ button:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
 textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:16px;padding:12px 16px;width:100%;max-width:360px;resize:vertical;outline:none;-webkit-user-select:text;user-select:text}
 textarea:focus{border-color:var(--glow)}
 textarea::placeholder{color:var(--ink-dim)}
+.goal{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%}
+.goal .said{color:var(--glow)}
+.goal form{display:flex;flex-direction:column;align-items:center;gap:8px;width:100%}
+#ovEnd{place-items:start center;padding-top:calc(56px + env(safe-area-inset-top,0px))}
 #ovLog{place-items:start center;padding-top:calc(56px + env(safe-area-inset-top,0px))}
 .log{list-style:none;margin:0;padding:0;width:100%;display:flex;flex-direction:column;text-align:left}
 .log li{display:flex;flex-direction:column;gap:2px;padding:12px 0;border-top:1px solid rgba(255,255,255,.12)}
@@ -142,7 +148,8 @@ textarea::placeholder{color:var(--ink-dim)}
   <!-- Intend -->
   <div class="overlay light" id="ovIntend" hidden>
     <div class="card" id="intendWhat">
-      <h2>What's one thing that would make today a good day?</h2>
+      <div class="goal" id="goalRow"></div>
+      <h2 id="intendQ">What's one thing that would make today a good day?</h2>
       <div class="row" id="chips"></div>
       <input type="text" id="intent" placeholder="Or write your own" maxlength="60" autocomplete="off">
       <div class="row"><button class="go" id="btnNext">Next</button></div>
@@ -151,11 +158,12 @@ textarea::placeholder{color:var(--ink-dim)}
     <div class="card" id="intendWhen" hidden>
       <div class="said" id="intentEcho"></div>
       <h2>When will you do it?</h2>
+      <p>Tie it to something you already do.</p>
       <div class="row">
-        <button class="pick" data-when="morning">This morning</button>
+        <button class="pick" data-when="morning">After my coffee</button>
         <button class="pick" data-when="lunch">At lunch</button>
-        <button class="pick" data-when="evening">After work</button>
-        <button class="pick" data-when="night">Tonight</button>
+        <button class="pick" data-when="evening">When I get home</button>
+        <button class="pick" data-when="night">Before bed</button>
       </div>
     </div>
   </div>
@@ -194,12 +202,18 @@ textarea::placeholder{color:var(--ink-dim)}
       <div class="label">Today's word</div>
       <div class="word" id="word"></div>
       <p class="said" id="intentBack"></p>
+      <p class="hint" id="goalBack" hidden></p>
       <canvas class="starsky" id="starSky" aria-hidden="true"></canvas>
       <p class="hint" id="skyLine"></p>
       <div class="coach" id="coachDay" hidden></div>
       <button class="go" id="btnWeekReady" hidden>Your week is ready</button>
       <div class="row"><button class="go" id="btnShare">Share today's word</button></div>
       <span class="hint" id="shareMsg" aria-live="polite"></span>
+      <div class="remind" id="calRemind" hidden>
+        <div class="said">Remind me every morning</div>
+        <div class="row"><input type="time" id="remindTime" value="07:00" aria-label="Reminder time"><button class="ghost" id="btnCal">Add to my calendar</button></div>
+        <p class="hint" id="calMsg">A daily calendar alert with a link back here.</p>
+      </div>
       <div class="remind" id="remind" hidden>
         <div class="said">Same time tomorrow?</div>
         <p class="hint">Get a short email at 7am with tomorrow's flight.</p>
@@ -231,8 +245,9 @@ const WORDS=['Steady','Open','Patient','Light','Kind','Clear','Present','Easy','
 const wordOn=idx=>WORDS[(((idx-1)%WORDS.length)+WORDS.length)%WORDS.length];
 const word=wordOn(dayIdx);
 // Ideas that already carry their own time skip the "when" question.
-const IDEAS=[['A walk outside'],['The hard task first','morning'],['A proper lunch','lunch'],['Call someone I love'],['Move my body'],['An early night','night'],['Ten quiet minutes'],['Drink more water','day'],['Finish one thing'],['Say no to one thing','day'],['Time off my phone','night'],['Cook something good','night']];
-const WHEN={morning:'This morning',lunch:'At lunch',evening:'After work',night:'Tonight',day:'Today'};
+const IDEAS=[['A walk outside'],['The hard task first','morning'],['A proper lunch','lunch'],['Call someone I love'],['Move my body'],['An early night','night'],['Ten quiet minutes'],['Drink more water','day'],['Finish one thing'],['Say no to one thing','day'],['Time off my phone','night'],['Cook something good','evening']];
+// Habit stacking: anchor the plan to something you already do every day.
+const WHEN={morning:'After my coffee',lunch:'At lunch',evening:'When I get home',night:'Before bed',day:'Today'};
 
 // ---- daily reminder signup ----
 // Paste the Beehiiv subscribe form ID here to switch the signup on. Asked for only after a finished flight.
@@ -246,7 +261,9 @@ let store={id:'',days:{}};
 try{ const s=JSON.parse(localStorage.getItem(KEY)); if(s&&s.days) store=s; }catch(e){}
 if(!store.id) store.id=Math.random().toString(36).slice(2,10)+Date.now().toString(36);
 function save(){ try{ localStorage.setItem(KEY,JSON.stringify(store)); }catch(e){} }
-const starCount=()=>Object.values(store.days).filter(d=>d.done).length;
+// A star means a full flight. Skipping the breathing still logs the morning, but earns no star.
+for(const d of Object.values(store.days)) if(d.done&&d.full===undefined) d.full=true; // flights from before skipping existed
+const starCount=()=>Object.values(store.days).filter(d=>d.full).length;
 const today=()=>store.days[todayKey]||(store.days[todayKey]={});
 
 // ---- flight plan: two breathing segments either side of the intention ----
@@ -262,6 +279,7 @@ function laneAt(seg,st){
 }
 
 // ---- state ----
+let skipped=false;
 let state='start', seg=SETTLE, st=0, clock=0, cam=0, y=0, vy=0, holding=false, touched=false;
 const trail=[];
 
@@ -396,7 +414,7 @@ $('ovCheck').addEventListener('click',e=>{
 });
 $('moods').addEventListener('click',e=>{
   const m=e.target.dataset.mood; if(!m) return;
-  today().mood=m; save();
+  today().mood=m; save(); skipped=false;
   show(null); seg=SETTLE; st=0; cam=0; trail.length=0; y=laneAt(seg,0).y; vy=0; holding=false; state='fly';
 });
 
@@ -404,6 +422,7 @@ function openIntend(){
   state='intend'; holding=false; clearCues(); $('phase').textContent='Intend';
   const chips=$('chips'); chips.innerHTML='';
   for(let i=0;i<4;i++){ const b=document.createElement('button'); b.className='chip'; const [text,when]=IDEAS[(dayIdx*4+i)%IDEAS.length]; b.textContent=text; if(when) b.dataset.when=when; chips.appendChild(b); }
+  renderGoal();
   $('intent').value=''; $('intendWhat').hidden=false; $('intendWhen').hidden=true;
   show('ovIntend');
 }
@@ -420,6 +439,26 @@ $('intent').addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Ent
 $('btnSkip').addEventListener('click',()=>{ delete today().intent; delete today().when; lift(); });
 $('intendWhen').addEventListener('click',e=>{ const w=e.target.dataset.when; if(!w) return; today().when=w; lift(); });
 
+function renderGoal(editing){
+  const row=$('goalRow'); row.innerHTML='';
+  $('intendQ').textContent=store.goal&&!editing ? 'What\'s one thing today that moves you toward it?' : 'What\'s one thing that would make today a good day?';
+  if(editing){
+    const f=document.createElement('form');
+    f.innerHTML='<label class="label" for="goalIn">What are you working toward?</label><input type="text" id="goalIn" maxlength="60" autocomplete="off" placeholder="e.g. Feel fitter by summer"><div class="row"><button class="ghost" type="submit">Save goal</button></div>';
+    const inp=f.querySelector('input'); inp.value=store.goal||''; inp.addEventListener('keydown',e=>e.stopPropagation());
+    f.addEventListener('submit',e=>{ e.preventDefault(); const v=inp.value.trim(); if(v) store.goal=v; else delete store.goal; save(); renderGoal(); });
+    row.appendChild(f); inp.focus(); return;
+  }
+  if(store.goal){
+    const l=document.createElement('div'); l.className='label'; l.textContent='Working toward';
+    const g=document.createElement('div'); g.className='said'; g.textContent=store.goal;
+    const c=document.createElement('button'); c.className='quiet'; c.textContent='Change'; c.onclick=()=>renderGoal(true);
+    row.append(l,g,c);
+  } else {
+    const a=document.createElement('button'); a.className='quiet'; a.textContent='+ Add something you\'re working toward'; a.onclick=()=>renderGoal(true);
+    row.appendChild(a);
+  }
+}
 const intentLine=d=>d.intent ? `${WHEN[d.when]||'Today'}: ${d.intent}` : '';
 function lift(){
   save(); show(null); seg=LIFT; st=0; vy=0; state='fly';
@@ -427,32 +466,33 @@ function lift(){
   if(line){ const c=$('carry'); c.textContent=line; c.classList.add('on'); setTimeout(()=>c.classList.remove('on'),9000); }
 }
 function land(){
-  const d=today(); d.done=true; save(); openEnd();
+  const d=today(); d.done=true; d.full=!!d.full||!skipped; save(); openEnd();
 }
 function openEnd(){
   state='end'; clearCues(); $('phase').textContent='Landed'; $('carry').classList.remove('on');
   const d=today(), n=starCount();
   $('word').textContent=word;
   $('intentBack').textContent=intentLine(d)||'Go gently.';
-  $('skyLine').textContent=`Morning #${n} · ${n} star${n>1?'s':''} in your sky`;
+  $('goalBack').hidden=!store.goal; $('goalBack').textContent=store.goal?`Toward: ${store.goal}`:'';
+  $('skyLine').textContent=d.full ? `Morning #${n} · ${n} star${n>1?'s':''} in your sky` : `You skipped the breathing, so no star today. Fly again to earn it.`;
   const cd=coachToday(); $('coachDay').hidden=!cd; if(cd) setCoach($('coachDay'),cd);
   const wk=weekData(), canWeek=weekButtons();
   $('btnWeekReady').hidden=!(canWeek&&now.getDay()===0&&!(store.reflections||{})[wk.key]);
   $('shareMsg').textContent='';
   showRemind();
-  show('ovEnd'); drawStarSky(n);
+  show('ovEnd'); drawStarSky(n,d.full);
 }
 function starPos(i){ let a=(i+1)*2654435761>>>0; const r=()=>((a=Math.imul(a^a>>>15,a|1)+0x6D2B79F5|0)>>>0)/4294967296; return [0.04+r()*0.92,0.12+r()*0.76,0.8+r()*1.2]; }
-function drawStarSky(n){ // one star per morning; the newest glows
+function drawStarSky(n,glow){ // one star per full flight; today's glows
   const el=$('starSky'), r=el.getBoundingClientRect(), g=el.getContext('2d');
   el.width=r.width*DPR; el.height=r.height*DPR; g.setTransform(DPR,0,0,DPR,0,0);
-  for(let i=0;i<n;i++){ const [x,sy,sr]=starPos(i), newest=i===n-1;
+  for(let i=0;i<n;i++){ const [x,sy,sr]=starPos(i), newest=glow&&i===n-1;
     if(newest){ const gl=g.createRadialGradient(x*r.width,sy*r.height,0,x*r.width,sy*r.height,14); gl.addColorStop(0,'rgba(255,201,138,.7)'); gl.addColorStop(1,'rgba(255,201,138,0)'); g.fillStyle=gl; g.fillRect(0,0,r.width,r.height); }
     g.fillStyle=newest?'#ffc98a':'rgba(244,239,230,.85)'; g.beginPath(); g.arc(x*r.width,sy*r.height,newest?2.6:sr,0,7); g.fill(); }
 }
 $('btnAgain').addEventListener('click',openStart);
 // Skip the breathing: Settle goes straight to the intention, Lift goes straight to the card.
-$('btnSkipBreath').addEventListener('click',()=>{ if(state!=='fly') return; holding=false; seg===SETTLE?openIntend():land(); });
+$('btnSkipBreath').addEventListener('click',()=>{ if(state!=='fly') return; holding=false; skipped=true; seg===SETTLE?openIntend():land(); });
 
 // ---- log: every flight, what you intended, whether you did it ----
 const MOOD={tired:'Tired',wired:'Wired',flat:'Flat',good:'Good'};
@@ -604,7 +644,29 @@ $('btnWeekSave').addEventListener('click',()=>{
   weekFrom==='ovLog'?openLog(logFrom):openEnd();
 });
 
+function calendarFile(hhmm){
+  const [h,m]=hhmm.split(':').map(Number), t=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,h,m);
+  const p=n=>String(n).padStart(2,'0');
+  const local=`${t.getFullYear()}${p(t.getMonth()+1)}${p(t.getDate())}T${p(h)}${p(m)}00`;
+  const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
+  return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Morning Flight//EN','BEGIN:VEVENT',
+    `UID:morning-flight-daily-${store.id}`,`DTSTAMP:${stamp}`,`DTSTART:${local}`,'DURATION:PT5M','RRULE:FREQ=DAILY',
+    'SUMMARY:Morning Flight',`DESCRIPTION:Two minutes. Breathe\\, set one intention.\\n${SITE_URL}`,`URL:${SITE_URL}`,
+    'BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:Morning Flight','TRIGGER:PT0M','END:VALARM','END:VEVENT','END:VCALENDAR',''].join('\r\n');
+}
+$('remindTime').addEventListener('keydown',e=>e.stopPropagation());
+$('btnCal').addEventListener('click',()=>{
+  const time=$('remindTime').value||'07:00';
+  const url=URL.createObjectURL(new Blob([calendarFile(time)],{type:'text/calendar'}));
+  const a=document.createElement('a'); a.href=url; a.download='morning-flight-reminder.ics'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+  store.calTime=time; save();
+  $('calMsg').textContent=`Open the file to add a ${time} reminder to your calendar.`;
+});
+
 function showRemind(){
+  $('calRemind').hidden=!!store.calTime&&!$('calMsg').textContent.startsWith('Open');
+  if(store.calTime) $('remindTime').value=store.calTime;
   const local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   $('remind').hidden=store.reminded||(!BEEHIIV_FORM_ID&&!local);
   const slot=$('remindForm'); if($('remind').hidden||slot.firstChild) return;
