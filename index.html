@@ -178,6 +178,8 @@ const WHEN={morning:'This morning',lunch:'At lunch',evening:'After work',night:'
 // ---- daily reminder signup ----
 // Paste the Beehiiv subscribe form ID here to switch the signup on. Asked for only after a finished flight.
 const BEEHIIV_FORM_ID='';
+// Shown on the share card and in the share text. Change when there's a domain.
+const SITE_URL='https://jackbraniff86-design.github.io/morning-flight/';
 
 // ---- storage: this browser only, anonymous ----
 const KEY='mf_v1';
@@ -413,11 +415,11 @@ async function makeCard(){
   g.fillStyle='rgba(244,239,230,.9)'; g.font='300 56px Fraunces,Georgia,serif';
   g.fillText(`Morning #${starCount()}`,w/2,h*0.36+size+120);
   g.fillStyle='rgba(30,28,52,.85)'; g.font='500 44px Fraunces,Georgia,serif'; g.fillText('Morning Flight',w/2,h-110);
-  g.font='600 30px "Nunito Sans",sans-serif'; g.fillText('Two minutes. Breathe, set one intention.',w/2,h-60);
+  g.font='600 30px "Nunito Sans",sans-serif'; g.fillText(SITE_URL.replace(/^https:\/\/|\/$/g,''),w/2,h-60);
   return new Promise(res=>c.toBlob(res,'image/png'));
 }
 $('btnShare').addEventListener('click',async()=>{
-  const text=`Today's word: ${word}. Morning #${starCount()} ☀️`, msg=$('shareMsg');
+  const text=`Today's word: ${word}. Morning #${starCount()} ☀️\n${SITE_URL}`, msg=$('shareMsg');
   const blob=await makeCard();
   const file=blob&&new File([blob],`morning-flight-${todayKey}.png`,{type:'image/png'});
   if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
