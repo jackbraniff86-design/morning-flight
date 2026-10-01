@@ -53,8 +53,10 @@ canvas#c{display:block;width:100%;height:100%;touch-action:none}
 .card p{margin:0;color:var(--ink-dim);line-height:1.5;max-width:34ch}
 .card .said{color:var(--ink);font-family:var(--f-display);font-size:20px;line-height:1.3}
 .label{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim)}
-input[type=time]{font:inherit;font-size:16px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:9px 14px;outline:none;font-variant-numeric:tabular-nums}
-input[type=time]:focus{border-color:var(--glow)}
+select{font:inherit;font-size:16px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:9px 14px;outline:none;font-variant-numeric:tabular-nums}
+select:focus{border-color:var(--glow)}
+a.ghost{color:var(--ink);text-decoration:none}
+a.ghost:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
 input[type=text]{font:inherit;font-size:17px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:12px 18px;width:100%;max-width:320px;text-align:center;outline:none;-webkit-user-select:text;user-select:text}
 input[type=text]:focus{border-color:var(--glow)}
 input::placeholder{color:var(--ink-dim)}
@@ -165,6 +167,8 @@ textarea::placeholder{color:var(--ink-dim)}
         <button class="pick" data-when="evening">When I get home</button>
         <button class="pick" data-when="night">Before bed</button>
       </div>
+      <input type="text" id="whenIn" placeholder="Or write your own, e.g. After the school run" maxlength="40" autocomplete="off" aria-label="When will you do it">
+      <div class="row"><button class="go" id="btnWhen">Next</button></div>
     </div>
   </div>
 
@@ -211,8 +215,9 @@ textarea::placeholder{color:var(--ink-dim)}
       <span class="hint" id="shareMsg" aria-live="polite"></span>
       <div class="remind" id="calRemind" hidden>
         <div class="said">Remind me every morning</div>
-        <div class="row"><input type="time" id="remindTime" value="07:00" aria-label="Reminder time"><button class="ghost" id="btnCal">Add to my calendar</button></div>
-        <p class="hint" id="calMsg">A daily calendar alert with a link back here.</p>
+        <div class="row"><label class="hint" for="remindTime">At</label><select id="remindTime"><option value="05:00">05:00</option><option value="05:15">05:15</option><option value="05:30">05:30</option><option value="05:45">05:45</option><option value="06:00">06:00</option><option value="06:15">06:15</option><option value="06:30">06:30</option><option value="06:45">06:45</option><option value="07:00" selected>07:00</option><option value="07:15">07:15</option><option value="07:30">07:30</option><option value="07:45">07:45</option><option value="08:00">08:00</option><option value="08:15">08:15</option><option value="08:30">08:30</option><option value="08:45">08:45</option><option value="09:00">09:00</option><option value="09:15">09:15</option><option value="09:30">09:30</option><option value="09:45">09:45</option><option value="10:00">10:00</option><option value="10:15">10:15</option><option value="10:30">10:30</option><option value="10:45">10:45</option></select></div>
+        <div class="row"><a class="ghost" id="calApple" href="#">iPhone / Apple Calendar</a><a class="ghost" id="calGoogle" href="#" target="_blank" rel="noopener">Google Calendar</a></div>
+        <p class="hint" id="calMsg">A daily alert with a link back here.</p>
       </div>
       <div class="remind" id="remind" hidden>
         <div class="said">Same time tomorrow?</div>
@@ -423,7 +428,7 @@ function openIntend(){
   const chips=$('chips'); chips.innerHTML='';
   for(let i=0;i<4;i++){ const b=document.createElement('button'); b.className='chip'; const [text,when]=IDEAS[(dayIdx*4+i)%IDEAS.length]; b.textContent=text; if(when) b.dataset.when=when; chips.appendChild(b); }
   renderGoal();
-  $('intent').value=''; $('intendWhat').hidden=false; $('intendWhen').hidden=true;
+  $('intent').value=''; $('whenIn').value=''; $('intendWhat').hidden=false; $('intendWhen').hidden=true;
   show('ovIntend');
 }
 function chooseIntent(text,when){
@@ -438,6 +443,9 @@ $('btnNext').addEventListener('click',()=>chooseIntent($('intent').value));
 $('intent').addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter') chooseIntent($('intent').value); });
 $('btnSkip').addEventListener('click',()=>{ delete today().intent; delete today().when; lift(); });
 $('intendWhen').addEventListener('click',e=>{ const w=e.target.dataset.when; if(!w) return; today().when=w; lift(); });
+function customWhen(){ const v=$('whenIn').value.trim(); if(!v) return $('whenIn').focus(); today().when=v; $('whenIn').blur(); lift(); }
+$('btnWhen').addEventListener('click',customWhen);
+$('whenIn').addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter') customWhen(); });
 
 function renderGoal(editing){
   const row=$('goalRow'); row.innerHTML='';
@@ -459,7 +467,10 @@ function renderGoal(editing){
     row.appendChild(a);
   }
 }
-const intentLine=d=>d.intent ? `${WHEN[d.when]||'Today'}: ${d.intent}` : '';
+// Preset anchors have keys; a custom answer is stored as its own text.
+const whenLabel=w=>WHEN[w]||w||'Today';
+const lowerFirst=t=>t.charAt(0).toLowerCase()+t.slice(1);
+const intentLine=d=>d.intent ? `${whenLabel(d.when)}: ${d.intent}` : '';
 function lift(){
   save(); show(null); seg=LIFT; st=0; vy=0; state='fly';
   const line=intentLine(today());
@@ -505,7 +516,7 @@ function logNote(days){ // one plain observation, only once there's enough to go
   const slots=Object.entries(by).filter(([,b])=>b.n>=2).sort((a,b)=>b[1].kept/b[1].n-a[1].kept/a[1].n);
   if(slots.length<2||slots[0][1].kept/slots[0][1].n===slots[slots.length-1][1].kept/slots[slots.length-1][1].n) return '';
   const [w,b]=slots[0];
-  return `You follow through most on things you plan for ${WHEN[w].toLowerCase()}: ${b.kept} of ${b.n}.`;
+  return `You follow through most on things you plan for ${lowerFirst(whenLabel(w))}: ${b.kept} of ${b.n}.`;
 }
 function openLog(from){
   logFrom=from;
@@ -554,7 +565,7 @@ function slotStats(){ // follow-through by time of day
   for(const [,d] of Object.entries(store.days)){ if(!d.followed||!d.when) continue; const b=by[d.when]||(by[d.when]={n:0,kept:0}); b.n++; if(d.followed!=='no') b.kept++; }
   return by;
 }
-const slotName=w=>WHEN[w].toLowerCase();
+const slotName=w=>lowerFirst(whenLabel(w));
 // Straight after "Did you do it?"
 function coachAfterCheck(k){
   const d=store.days[k], f=d.followed;
@@ -579,7 +590,7 @@ function coachToday(){
   if(recent.length>=4&&wiredN>=3) return [`Wired ${wiredN} of your last ${recent.length} mornings.`,'Before you open anything, take three more slow out-breaths, the same as the flight.'];
   if(d.intent&&d.when){ const b=by[d.when];
     if(b&&b.n>=3&&b.kept/b.n<0.5) return [`Heads up: plans for ${slotName(d.when)} have stuck ${b.kept} of ${b.n} times.`,'Decide now what you will do just before it, so it has a trigger.'];
-    if(b&&b.n>=3&&b.kept/b.n>=0.75) return [`${WHEN[d.when]} is your strong time: ${b.kept} of ${b.n} kept.`,'Good call putting it there.'];
+    if(b&&b.n>=3&&b.kept/b.n>=0.75) return [`${whenLabel(d.when)} is your strong time: ${b.kept} of ${b.n} kept.`,'Good call putting it there.'];
   }
   const M={
     tired:['Tired today. Keep the one thing small and protect it.','Doing it at all matters more than doing it well.'],
@@ -644,29 +655,24 @@ $('btnWeekSave').addEventListener('click',()=>{
   weekFrom==='ovLog'?openLog(logFrom):openEnd();
 });
 
-function calendarFile(hhmm){
-  const [h,m]=hhmm.split(':').map(Number), t=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,h,m);
-  const p=n=>String(n).padStart(2,'0');
-  const local=`${t.getFullYear()}${p(t.getMonth()+1)}${p(t.getDate())}T${p(h)}${p(m)}00`;
-  const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
-  return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Morning Flight//EN','BEGIN:VEVENT',
-    `UID:morning-flight-daily-${store.id}`,`DTSTAMP:${stamp}`,`DTSTART:${local}`,'DURATION:PT5M','RRULE:FREQ=DAILY',
-    'SUMMARY:Morning Flight',`DESCRIPTION:Two minutes. Breathe\\, set one intention.\\n${SITE_URL}`,`URL:${SITE_URL}`,
-    'BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:Morning Flight','TRIGGER:PT0M','END:VALARM','END:VEVENT','END:VCALENDAR',''].join('\r\n');
+// Daily reminder. Apple: open a real .ics on the site, which iPhone shows as "Add to Calendar".
+// Google: its own add-event page, repeating daily. One file per 15 minutes lives in reminders/.
+function calLinks(){
+  const t=$('remindTime').value, hm=t.replace(':','');
+  const base=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)?'':SITE_URL;
+  $('calApple').href=`${base}reminders/${hm}.ics`;
+  const [h,m]=t.split(':').map(Number), d=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,h,m), e=new Date(d.getTime()+5*60000);
+  const p=n=>String(n).padStart(2,'0'), f=x=>`${x.getFullYear()}${p(x.getMonth()+1)}${p(x.getDate())}T${p(x.getHours())}${p(x.getMinutes())}00`;
+  const q=new URLSearchParams({action:'TEMPLATE',text:'Morning Flight',dates:`${f(d)}/${f(e)}`,recur:'RRULE:FREQ=DAILY',details:`Two minutes. Breathe, set one intention.\n${SITE_URL}`});
+  $('calGoogle').href=`https://calendar.google.com/calendar/render?${q}`;
 }
-$('remindTime').addEventListener('keydown',e=>e.stopPropagation());
-$('btnCal').addEventListener('click',()=>{
-  const time=$('remindTime').value||'07:00';
-  const url=URL.createObjectURL(new Blob([calendarFile(time)],{type:'text/calendar'}));
-  const a=document.createElement('a'); a.href=url; a.download='morning-flight-reminder.ics'; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),10000);
-  store.calTime=time; save();
-  $('calMsg').textContent=`Open the file to add a ${time} reminder to your calendar.`;
-});
+$('remindTime').addEventListener('change',()=>{ calLinks(); store.calTime=$('remindTime').value; save(); });
+for(const id of ['calApple','calGoogle']) $(id).addEventListener('click',()=>{ store.calTime=$('remindTime').value; store.calAdded=true; save(); });
 
 function showRemind(){
-  $('calRemind').hidden=!!store.calTime&&!$('calMsg').textContent.startsWith('Open');
-  if(store.calTime) $('remindTime').value=store.calTime;
+  if(store.calTime&&[...$('remindTime').options].some(o=>o.value===store.calTime)) $('remindTime').value=store.calTime;
+  calLinks(); $('calRemind').hidden=false;
+  $('calMsg').textContent=store.calAdded?'Added? You can change the time any day.':'A daily alert with a link back here.';
   const local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   $('remind').hidden=store.reminded||(!BEEHIIV_FORM_ID&&!local);
   const slot=$('remindForm'); if($('remind').hidden||slot.firstChild) return;

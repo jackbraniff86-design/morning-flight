@@ -1,0 +1,21 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Morning Flight//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:morning-flight-daily-0845@morning-flight
+DTSTAMP:20261001T000000Z
+DTSTART:20261002T084500
+DURATION:PT5M
+RRULE:FREQ=DAILY
+SUMMARY:Morning Flight
+DESCRIPTION:Two minutes. Breathe\, set one intention.\nhttps://jackbraniff86-design.github.io/morning-flight/
+URL:https://jackbraniff86-design.github.io/morning-flight/
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Morning Flight
+TRIGGER:PT0M
+END:VALARM
+END:VEVENT
+END:VCALENDAR
