@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Morning Flight</title>
+<meta name="description" content="Two minutes every morning. Slow your breathing, set one intention, leave with a word to carry.">
+<meta name="theme-color" content="#1d2340">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Morning Flight">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500&family=Nunito+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: one full-height sky (canvas) with a thin top strip and a small bottom prompt. Cards float on the sky. Single committed look: pre-dawn, warming to sunrise as the flight progresses. */
+:root{
+  --sky-top:#1d2340;
+  --ink:#f4efe6;
+  --ink-dim:rgba(244,239,230,.66);
+  --plane:#fff3dc;
+  --glow:#ffc98a;
+  --line:rgba(255,255,255,.22);
+  --fill:rgba(255,255,255,.07);
+  --f-display:"Fraunces",Georgia,"Times New Roman",serif;
+  --f-body:"Nunito Sans",system-ui,-apple-system,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--sky-top);color:var(--ink);font-family:var(--f-body);font-size:16px;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+[hidden]{display:none!important}
+.sky{position:relative;height:100%;width:100%}
+canvas#c{display:block;width:100%;height:100%;touch-action:none}
+.top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top,0px));pointer-events:none}
+.top .name{font-family:var(--f-display);font-weight:500;font-size:18px;letter-spacing:.01em}
+.top .phase{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.carry{position:absolute;left:0;right:0;top:16%;text-align:center;padding:0 24px;font-family:var(--f-display);font-weight:300;font-size:clamp(20px,5vw,28px);opacity:0;transition:opacity 1.6s;pointer-events:none;text-wrap:balance}
+.carry.on{opacity:.92}
+.prompt{position:absolute;left:0;right:0;bottom:0;text-align:center;padding:18px;padding-bottom:calc(22px + env(safe-area-inset-bottom,0px));pointer-events:none}
+.prompt .cue{font-family:var(--f-display);font-weight:300;font-size:clamp(26px,6vw,40px);letter-spacing:.02em}
+.prompt .sub{font-size:13px;color:var(--ink-dim);margin-top:4px}
+.overlay{position:absolute;inset:0;display:grid;place-items:center;padding:16px;padding-top:calc(16px + env(safe-area-inset-top,0px));padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));background:linear-gradient(to bottom,rgba(20,22,38,.35),rgba(20,22,38,.7));backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);overflow-y:auto}
+.overlay.light{background:linear-gradient(to bottom,rgba(20,22,38,.15),rgba(20,22,38,.5));backdrop-filter:none;-webkit-backdrop-filter:none}
+.card{max-width:420px;width:100%;display:flex;flex-direction:column;gap:14px;text-align:center;align-items:center}
+.card h1{font-family:var(--f-display);font-weight:300;font-size:clamp(40px,10vw,64px);margin:0;line-height:1;letter-spacing:-.01em;text-wrap:balance}
+.card h2{font-family:var(--f-display);font-weight:300;font-size:clamp(26px,6.5vw,36px);margin:0;line-height:1.1;text-wrap:balance}
+.card p{margin:0;color:var(--ink-dim);line-height:1.5;max-width:34ch}
+.card .said{color:var(--ink);font-family:var(--f-display);font-size:20px;line-height:1.3}
+.label{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim)}
+input[type=text]{font:inherit;font-size:17px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:12px 18px;width:100%;max-width:320px;text-align:center;outline:none;-webkit-user-select:text;user-select:text}
+input[type=text]:focus{border-color:var(--glow)}
+input::placeholder{color:var(--ink-dim)}
+button{font:inherit;cursor:pointer;color:var(--ink)}
+button:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
+.go{background:var(--ink);color:#1d2340;border:0;border-radius:999px;padding:14px 30px;font-weight:600;font-size:16px;letter-spacing:.02em}
+.ghost{background:transparent;border:1px solid var(--line);border-radius:999px;padding:10px 20px;font-weight:600;font-size:14px}
+.pick{background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:12px 20px;font-weight:600;font-size:15px}
+.pick:hover{border-color:var(--glow)}
+.chip{background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:9px 14px;font-size:14px}
+.chip:hover{border-color:var(--glow)}
+.quiet{background:none;border:0;color:var(--ink-dim);font-size:13px;text-decoration:underline;text-underline-offset:3px;padding:6px}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
+.word{font-family:var(--f-display);font-weight:500;font-size:clamp(48px,14vw,92px);line-height:1;color:var(--glow);letter-spacing:-.01em}
+.starsky{width:100%;max-width:320px;height:84px;border-top:1px solid rgba(255,255,255,.12);border-bottom:1px solid rgba(255,255,255,.12)}
+.hint{font-size:13px;color:var(--ink-dim)}
+.remind{width:100%;max-width:340px;display:flex;flex-direction:column;gap:8px;align-items:center;border-top:1px solid rgba(255,255,255,.12);padding-top:14px}
+.remind iframe{width:100%;height:60px;border:0;border-radius:12px;background:transparent}
+.remind .todo{width:100%;border:1px dashed var(--line);border-radius:12px;padding:14px;font-size:13px;color:var(--ink-dim)}
+</style>
+</head>
+<body>
+<div class="sky" id="sky">
+  <canvas id="c" aria-label="Sky. Hold as you breathe in, let go as you breathe out."></canvas>
+  <div class="top"><div class="name">Morning Flight</div><div class="phase" id="phase"></div></div>
+  <div class="carry" id="carry"></div>
+  <div class="prompt"><div class="cue" id="cue"></div><div class="sub" id="cueSub"></div></div>
+
+  <!-- Last flight's intention: did you do it? -->
+  <div class="overlay" id="ovCheck" hidden>
+    <div class="card">
+      <div class="label" id="checkWhen">Yesterday you said</div>
+      <div class="said" id="checkSaid"></div>
+      <h2>Did you do it?</h2>
+      <div class="row">
+        <button class="pick" data-followed="yes">Yes</button>
+        <button class="pick" data-followed="partly">Partly</button>
+        <button class="pick" data-followed="no">Not today</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrive -->
+  <div class="overlay" id="ovStart" hidden>
+    <div class="card">
+      <div class="label" id="dayNo">Flight #1</div>
+      <h1>Morning<br>Flight</h1>
+      <p>Two minutes. Hold the screen as you breathe in, let go as you breathe out. There's nothing to get wrong.</p>
+      <div class="label">How are you this morning?</div>
+      <div class="row" id="moods">
+        <button class="pick" data-mood="tired">Tired</button>
+        <button class="pick" data-mood="wired">Wired</button>
+        <button class="pick" data-mood="flat">Flat</button>
+        <button class="pick" data-mood="good">Good</button>
+      </div>
+      <div class="hint" id="starsLine"></div>
+    </div>
+  </div>
+
+  <!-- Intend -->
+  <div class="overlay light" id="ovIntend" hidden>
+    <div class="card" id="intendWhat">
+      <h2>What's one thing that would make today a good day?</h2>
+      <div class="row" id="chips"></div>
+      <input type="text" id="intent" placeholder="Or write your own" maxlength="60" autocomplete="off">
+      <div class="row"><button class="go" id="btnNext">Next</button></div>
+      <button class="quiet" id="btnSkip">Not today, just fly</button>
+    </div>
+    <div class="card" id="intendWhen" hidden>
+      <div class="said" id="intentEcho"></div>
+      <h2>When will you do it?</h2>
+      <div class="row">
+        <button class="pick" data-when="morning">This morning</button>
+        <button class="pick" data-when="lunch">At lunch</button>
+        <button class="pick" data-when="evening">After work</button>
+        <button class="pick" data-when="night">Tonight</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card -->
+  <div class="overlay" id="ovEnd" hidden>
+    <div class="card">
+      <div class="label">Today's word</div>
+      <div class="word" id="word"></div>
+      <p class="said" id="intentBack"></p>
+      <canvas class="starsky" id="starSky" aria-hidden="true"></canvas>
+      <p class="hint" id="skyLine"></p>
+      <p class="hint" id="weekLine" hidden></p>
+      <div class="row"><button class="go" id="btnShare">Share today's word</button></div>
+      <span class="hint" id="shareMsg" aria-live="polite"></span>
+      <div class="remind" id="remind" hidden>
+        <div class="said">Same time tomorrow?</div>
+        <p class="hint">Get a short email at 7am with tomorrow's flight.</p>
+        <div id="remindForm"></div>
+        <button class="quiet" id="btnRemindOff">I'm already signed up</button>
+      </div>
+      <button class="quiet" id="btnAgain">Fly again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+const $=id=>document.getElementById(id);
+const cv=$('c'), ctx=cv.getContext('2d');
+let W=0,H=0,DPR=1;
+function resize(){ const r=$('sky').getBoundingClientRect(); DPR=Math.min(2,devicePixelRatio||1); W=r.width;H=r.height; cv.width=W*DPR;cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize',resize); resize();
+
+// ---- the day ----
+const LAUNCH=Date.UTC(2026,9,1); // 1 Oct 2026 = Flight #1
+const now=new Date();
+const dayUTC=d=>Date.UTC(d.getFullYear(),d.getMonth(),d.getDate());
+const keyOf=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const todayKey=keyOf(now);
+const dayIdx=Math.max(1,Math.floor((dayUTC(now)-LAUNCH)/864e5)+1);
+// One word a day, same for everyone. 30 days before a repeat.
+const WORDS=['Steady','Open','Patient','Light','Kind','Clear','Present','Easy','Brave','Gentle','Curious','Enough','Slow','Warm','Ready','Quiet','Honest','Loose','Awake','Here','Soft','Grounded','Willing','Simple','Calm','Bright','Rested','Free','Sure','Begin'];
+const word=WORDS[(dayIdx-1)%WORDS.length];
+// Ideas that already carry their own time skip the "when" question.
+const IDEAS=[['A walk outside'],['The hard task first','morning'],['A proper lunch','lunch'],['Call someone I love'],['Move my body'],['An early night','night'],['Ten quiet minutes'],['Drink more water','day'],['Finish one thing'],['Say no to one thing','day'],['Time off my phone','night'],['Cook something good','night']];
+const WHEN={morning:'This morning',lunch:'At lunch',evening:'After work',night:'Tonight',day:'Today'};
+
+// ---- daily reminder signup ----
+// Paste the Beehiiv subscribe form ID here to switch the signup on. Asked for only after a finished flight.
+const BEEHIIV_FORM_ID='';
+
+// ---- storage: this browser only, anonymous ----
+const KEY='mf_v1';
+let store={id:'',days:{}};
+try{ const s=JSON.parse(localStorage.getItem(KEY)); if(s&&s.days) store=s; }catch(e){}
+if(!store.id) store.id=Math.random().toString(36).slice(2,10)+Date.now().toString(36);
+function save(){ try{ localStorage.setItem(KEY,JSON.stringify(store)); }catch(e){} }
+const starCount=()=>Object.values(store.days).filter(d=>d.done).length;
+const today=()=>store.days[todayKey]||(store.days[todayKey]={});
+
+// ---- flight plan: two breathing segments either side of the intention ----
+const SETTLE={name:'Settle', inh:4, exh:6, dur:40};
+const LIFT  ={name:'Lift',   inh:5, exh:5, dur:40, climb:true};
+// Height of the light at a moment in a segment: rises on the in-breath, sinks on the out-breath.
+function laneAt(seg,st){
+  const cycle=seg.inh+seg.exh, k=((st%cycle)+cycle)%cycle;
+  const up = k<seg.inh ? 0.5-0.5*Math.cos(Math.PI*k/seg.inh) : 0.5+0.5*Math.cos(Math.PI*(k-seg.inh)/seg.exh);
+  let base=0.72-0.44*up;
+  if(seg.climb){ const f=Math.min(1,Math.max(0,st)/seg.dur); base-=0.14*f*f; }
+  return {y:base*H, k};
+}
+
+// ---- state ----
+let state='start', seg=SETTLE, st=0, clock=0, cam=0, y=0, vy=0, holding=false, touched=false;
+const trail=[];
+
+// ---- scene ----
+const starField=[]; for(let i=0;i<90;i++) starField.push({x:Math.random(),y:Math.random()*0.7,r:Math.random()*1.4+.3,tw:Math.random()*6});
+const clouds=[]; for(let i=0;i<7;i++) clouds.push({x:Math.random()*1.6,y:0.15+Math.random()*0.7,w:0.25+Math.random()*0.35,s:0.15+Math.random()*0.25,a:.05+Math.random()*.08});
+const hills=[]; for(let i=0;i<3;i++){ const pts=[]; for(let x=0;x<24;x++) pts.push(0.5+0.5*Math.sin(x*Math.PI/6+i*2)+0.3*Math.sin(x*Math.PI/4+i)); hills.push({pts,s:0.25+i*0.2,h:0.08+i*0.06,a:.5-i*.13}); }
+const lerp=(a,b,k)=>a+(b-a)*k;
+const mix=(c1,c2,k)=>`rgb(${Math.round(lerp(c1[0],c2[0],k))},${Math.round(lerp(c1[1],c2[1],k))},${Math.round(lerp(c1[2],c2[2],k))})`;
+const PRE_TOP=[29,35,64], PRE_BOT=[90,74,107], DAWN_TOP=[92,110,160], DAWN_BOT=[255,178,120];
+function drawSky(g,w,h,prog,live){
+  const gr=g.createLinearGradient(0,0,0,h);
+  gr.addColorStop(0,mix(PRE_TOP,DAWN_TOP,prog)); gr.addColorStop(1,mix(PRE_BOT,DAWN_BOT,prog));
+  g.fillStyle=gr; g.fillRect(0,0,w,h);
+  const sy=h*(1.05-0.5*prog), sr=h*0.12;
+  const sg=g.createRadialGradient(w*0.5,sy,0,w*0.5,sy,sr*3);
+  sg.addColorStop(0,`rgba(255,201,138,${0.55*prog+0.1})`); sg.addColorStop(1,'rgba(255,201,138,0)');
+  g.fillStyle=sg; g.fillRect(0,0,w,h);
+  if(live){
+    g.fillStyle='rgb(244,239,230)';
+    for(const s of starField){ const a=(1-prog)*(0.5+0.5*Math.sin(clock*1.3+s.tw)); if(a<0.03) continue; g.globalAlpha=a*0.8; g.beginPath(); g.arc(s.x*w,s.y*h,s.r,0,7); g.fill(); }
+    g.globalAlpha=1;
+  }
+  for(const c of clouds){ const x=((c.x-cam*c.s*0.02)%1.6+1.6)%1.6-0.3; g.fillStyle=`rgba(255,240,225,${c.a+prog*0.1})`; const cw=c.w*w, ch=cw*0.22; g.beginPath(); g.ellipse(x*w,c.y*h,cw/2,ch/2,0,0,7); g.fill(); }
+  for(const hl of hills){ g.fillStyle=`rgba(30,28,52,${hl.a})`; g.beginPath(); g.moveTo(0,h);
+    const off=(cam*hl.s*0.01)%1;
+    for(let i=0;i<=48;i++){ const u=i/48; const idx=((u+off)*24)%24, f=Math.floor(idx); const v=lerp(hl.pts[f],hl.pts[(f+1)%24],idx-f); g.lineTo(u*w,h-(0.06+hl.h*v)*h); }
+    g.lineTo(w,h); g.closePath(); g.fill(); }
+}
+// One soft glowing path to drift along. No edges, nothing to stay inside.
+function drawLane(){
+  const px=W*0.28, lookahead=W*0.72, span=8;
+  ctx.beginPath();
+  for(let i=0;i<=80;i++){ const u=i/80; const tt=st-(px/lookahead)*span+u*span*(W/lookahead); const yy=laneAt(seg,Math.max(0,tt)).y; i?ctx.lineTo(u*W,yy):ctx.moveTo(u*W,yy); }
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  const fade=ctx.createLinearGradient(0,0,W,0);
+  fade.addColorStop(0,'rgba(255,214,160,0)'); fade.addColorStop(0.22,'rgba(255,214,160,.10)'); fade.addColorStop(0.6,'rgba(255,214,160,.14)'); fade.addColorStop(1,'rgba(255,214,160,0)');
+  ctx.strokeStyle=fade; ctx.lineWidth=Math.max(22,H*0.07); ctx.stroke();
+  const core=ctx.createLinearGradient(0,0,W,0);
+  core.addColorStop(0,'rgba(255,236,205,0)'); core.addColorStop(0.24,'rgba(255,236,205,.55)'); core.addColorStop(0.7,'rgba(255,236,205,.45)'); core.addColorStop(1,'rgba(255,236,205,0)');
+  ctx.strokeStyle=core; ctx.lineWidth=2; ctx.stroke();
+}
+function drawPlane(x,py,tilt){
+  ctx.save(); ctx.translate(x,py); ctx.rotate(tilt);
+  const s=Math.max(14,H*0.028);
+  ctx.fillStyle='#fff3dc';
+  ctx.beginPath(); ctx.moveTo(s*1.4,0); ctx.lineTo(-s,-s*0.55); ctx.lineTo(-s*0.4,0); ctx.lineTo(-s,s*0.55); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,.18)'; ctx.beginPath(); ctx.moveTo(s*1.4,0); ctx.lineTo(-s*0.4,0); ctx.lineTo(-s,s*0.55); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+// ---- loop ----
+function progress(){
+  if(state==='fly') return seg===SETTLE ? 0.35*st/seg.dur : 0.35+0.65*Math.min(1,st/seg.dur);
+  if(state==='intend') return 0.35;
+  return state==='end'?1:0;
+}
+function update(dt){
+  clock+=dt;
+  if(state==='intend'){ // plane levels off while you choose
+    cam+=dt; const target=0.72*H; vy+=((target-y)*0.8-vy)*Math.min(1,dt*3); y+=vy*dt;
+    trail.push(y); if(trail.length>40) trail.shift(); return;
+  }
+  if(state!=='fly') return;
+  st+=dt; cam+=dt;
+  const L=laneAt(seg,st), inhaling=L.k<seg.inh;
+  // Holding means breathing in: rise at the pace of an in-breath. Letting go sinks at the pace of an out-breath.
+  const travel=0.44*H;
+  const target=holding ? -travel/seg.inh : travel/seg.exh;
+  vy+=(target-vy)*Math.min(1,dt*3);
+  y+=vy*dt;
+  // a soft pull toward the light so you never drift far. No edges, no failure.
+  const off=y-L.y, soft=H*0.06;
+  if(Math.abs(off)>soft) y-=(off-Math.sign(off)*soft)*Math.min(1,dt*1.2);
+  y=Math.max(H*0.06,Math.min(H*0.94,y));
+  trail.push(y); if(trail.length>40) trail.shift();
+  $('cue').textContent=inhaling?'Breathe in':'Breathe out';
+  $('cueSub').textContent=inhaling?(touched?`hold · ${seg.inh} seconds`:'press and hold the screen'):`let go · ${seg.exh} seconds`;
+  $('phase').textContent=`${seg.name} · ${Math.max(0,Math.ceil(seg.dur-st))}s`;
+  if(st>=seg.dur) seg===SETTLE ? openIntend() : land();
+}
+function draw(){
+  drawSky(ctx,W,H,progress(),true);
+  const px=W*0.28;
+  if(state==='fly'||state==='intend'){
+    if(state==='fly') drawLane();
+    ctx.strokeStyle='rgba(255,243,220,.35)'; ctx.lineWidth=1.5; ctx.beginPath();
+    trail.forEach((ty,i)=>{ const x=px-(trail.length-1-i)*3; i?ctx.lineTo(x,ty):ctx.moveTo(x,ty); }); ctx.stroke();
+    drawPlane(px,y,Math.atan2(vy,H*0.9)*0.5);
+  } else {
+    drawPlane(px,H*0.16+Math.sin(clock*0.6)*H*0.03,Math.cos(clock*0.6)*0.05);
+  }
+}
+let last=performance.now();
+function frame(t){ const dt=Math.min(0.05,(t-last)/1000); last=t; update(dt); draw(); requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+
+// ---- flow: check → arrive → settle → intend → lift → card ----
+const overlays=['ovCheck','ovStart','ovIntend','ovEnd'];
+function show(id){ overlays.forEach(o=>$(o).hidden=o!==id); }
+function clearCues(){ $('cue').textContent=''; $('cueSub').textContent=''; }
+
+function pendingCheck(){ // most recent earlier flight with an unanswered intention
+  const k=Object.keys(store.days).filter(k=>k<todayKey).sort().pop();
+  const d=k&&store.days[k];
+  return d&&d.intent&&!d.followed ? {k,d} : null;
+}
+function openStart(){
+  state='start'; clearCues(); $('phase').textContent='';
+  $('dayNo').textContent=`Flight #${dayIdx}`;
+  const n=starCount();
+  $('starsLine').textContent=n?`${n} star${n>1?'s':''} in your sky`:'Your first star is waiting';
+  show('ovStart');
+}
+function begin(){
+  const pc=pendingCheck();
+  if(!pc) return openStart();
+  const [yy,mm,dd]=pc.k.split('-').map(Number);
+  const gap=Math.round((dayUTC(now)-Date.UTC(yy,mm-1,dd))/864e5);
+  $('checkWhen').textContent=gap===1?'Yesterday you said':'Last time you said';
+  $('checkSaid').textContent=`“${pc.d.intent}”`;
+  $('ovCheck').dataset.day=pc.k;
+  show('ovCheck');
+}
+$('ovCheck').addEventListener('click',e=>{
+  const f=e.target.dataset.followed; if(!f) return;
+  store.days[$('ovCheck').dataset.day].followed=f; save(); openStart();
+});
+$('moods').addEventListener('click',e=>{
+  const m=e.target.dataset.mood; if(!m) return;
+  today().mood=m; save();
+  show(null); seg=SETTLE; st=0; cam=0; trail.length=0; y=laneAt(seg,0).y; vy=0; holding=false; state='fly';
+});
+
+function openIntend(){
+  state='intend'; holding=false; clearCues(); $('phase').textContent='Intend';
+  const chips=$('chips'); chips.innerHTML='';
+  for(let i=0;i<4;i++){ const b=document.createElement('button'); b.className='chip'; const [text,when]=IDEAS[(dayIdx*4+i)%IDEAS.length]; b.textContent=text; if(when) b.dataset.when=when; chips.appendChild(b); }
+  $('intent').value=''; $('intendWhat').hidden=false; $('intendWhen').hidden=true;
+  show('ovIntend');
+}
+function chooseIntent(text,when){
+  text=text.trim(); if(!text) return $('intent').focus();
+  today().intent=text;
+  if(when){ today().when=when; return lift(); }
+  $('intentEcho').textContent=`“${text}”`;
+  $('intent').blur(); $('intendWhat').hidden=true; $('intendWhen').hidden=false;
+}
+$('chips').addEventListener('click',e=>{ if(e.target.classList.contains('chip')) chooseIntent(e.target.textContent,e.target.dataset.when); });
+$('btnNext').addEventListener('click',()=>chooseIntent($('intent').value));
+$('intent').addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter') chooseIntent($('intent').value); });
+$('btnSkip').addEventListener('click',()=>{ delete today().intent; delete today().when; lift(); });
+$('intendWhen').addEventListener('click',e=>{ const w=e.target.dataset.when; if(!w) return; today().when=w; lift(); });
+
+const intentLine=d=>d.intent ? `${WHEN[d.when]||'Today'}: ${d.intent}` : '';
+function lift(){
+  save(); show(null); seg=LIFT; st=0; vy=0; state='fly';
+  const line=intentLine(today());
+  if(line){ const c=$('carry'); c.textContent=line; c.classList.add('on'); setTimeout(()=>c.classList.remove('on'),9000); }
+}
+function land(){
+  const d=today(); d.done=true; save(); openEnd();
+}
+function openEnd(){
+  state='end'; clearCues(); $('phase').textContent='Landed'; $('carry').classList.remove('on');
+  const d=today(), n=starCount();
+  $('word').textContent=word;
+  $('intentBack').textContent=intentLine(d)||'Go gently.';
+  $('skyLine').textContent=`Morning #${n} · ${n} star${n>1?'s':''} in your sky`;
+  // the week so far: intentions you've answered for
+  const cut=keyOf(new Date(now.getFullYear(),now.getMonth(),now.getDate()-7));
+  const answered=Object.entries(store.days).filter(([k,v])=>k>=cut&&v.followed);
+  const kept=answered.filter(([,v])=>v.followed!=='no').length;
+  $('weekLine').hidden=answered.length<2;
+  $('weekLine').textContent=`You followed through on ${kept} of your last ${answered.length} intentions.`;
+  $('shareMsg').textContent='';
+  showRemind();
+  show('ovEnd'); drawStarSky(n);
+}
+function starPos(i){ let a=(i+1)*2654435761>>>0; const r=()=>((a=Math.imul(a^a>>>15,a|1)+0x6D2B79F5|0)>>>0)/4294967296; return [0.04+r()*0.92,0.12+r()*0.76,0.8+r()*1.2]; }
+function drawStarSky(n){ // one star per morning; the newest glows
+  const el=$('starSky'), r=el.getBoundingClientRect(), g=el.getContext('2d');
+  el.width=r.width*DPR; el.height=r.height*DPR; g.setTransform(DPR,0,0,DPR,0,0);
+  for(let i=0;i<n;i++){ const [x,sy,sr]=starPos(i), newest=i===n-1;
+    if(newest){ const gl=g.createRadialGradient(x*r.width,sy*r.height,0,x*r.width,sy*r.height,14); gl.addColorStop(0,'rgba(255,201,138,.7)'); gl.addColorStop(1,'rgba(255,201,138,0)'); g.fillStyle=gl; g.fillRect(0,0,r.width,r.height); }
+    g.fillStyle=newest?'#ffc98a':'rgba(244,239,230,.85)'; g.beginPath(); g.arc(x*r.width,sy*r.height,newest?2.6:sr,0,7); g.fill(); }
+}
+$('btnAgain').addEventListener('click',openStart);
+
+function showRemind(){
+  const local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  $('remind').hidden=store.reminded||(!BEEHIIV_FORM_ID&&!local);
+  const slot=$('remindForm'); if($('remind').hidden||slot.firstChild) return;
+  if(BEEHIIV_FORM_ID){ const f=document.createElement('iframe'); f.src=`https://subscribe-forms.beehiiv.com/${BEEHIIV_FORM_ID}`; f.title='Daily reminder signup'; f.scrolling='no'; slot.appendChild(f); }
+  else { slot.className='todo'; slot.textContent='Email signup goes here once the Beehiiv form is connected. Visitors do not see this box.'; }
+}
+$('btnRemindOff').addEventListener('click',()=>{ store.reminded=true; save(); $('remind').hidden=true; });
+
+// ---- share card: the word on a sunrise. The intention is never on it. ----
+async function makeCard(){
+  const w=1080,h=1920, c=document.createElement('canvas'); c.width=w; c.height=h; const g=c.getContext('2d');
+  try{ await Promise.all([document.fonts.load('500 200px Fraunces'),document.fonts.load('600 40px "Nunito Sans"')]); }catch(e){}
+  drawSky(g,w,h,1,false);
+  g.textAlign='center'; g.fillStyle='rgba(244,239,230,.8)';
+  g.font='600 38px "Nunito Sans",sans-serif'; g.letterSpacing='8px'; g.fillText("TODAY'S WORD",w/2,h*0.36);
+  g.letterSpacing='0px'; g.fillStyle='#fff3dc';
+  let size=230; g.font=`500 ${size}px Fraunces,Georgia,serif`;
+  while(g.measureText(word).width>w-160){ size-=10; g.font=`500 ${size}px Fraunces,Georgia,serif`; }
+  g.fillText(word,w/2,h*0.36+size);
+  g.fillStyle='rgba(244,239,230,.9)'; g.font='300 56px Fraunces,Georgia,serif';
+  g.fillText(`Morning #${starCount()}`,w/2,h*0.36+size+120);
+  g.fillStyle='rgba(30,28,52,.85)'; g.font='500 44px Fraunces,Georgia,serif'; g.fillText('Morning Flight',w/2,h-110);
+  g.font='600 30px "Nunito Sans",sans-serif'; g.fillText('Two minutes. Breathe, set one intention.',w/2,h-60);
+  return new Promise(res=>c.toBlob(res,'image/png'));
+}
+$('btnShare').addEventListener('click',async()=>{
+  const text=`Today's word: ${word}. Morning #${starCount()} ☀️`, msg=$('shareMsg');
+  const blob=await makeCard();
+  const file=blob&&new File([blob],`morning-flight-${todayKey}.png`,{type:'image/png'});
+  if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file],text}); }catch(e){}
+    return;
+  }
+  if(blob){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=file.name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); }
+  try{ await navigator.clipboard.writeText(text); msg.textContent='Card saved. Text copied.'; }catch(e){ msg.textContent=text; }
+});
+
+// ---- input ----
+cv.addEventListener('pointerdown',e=>{ e.preventDefault(); if(state==='fly'){ holding=true; touched=true; } });
+addEventListener('pointerup',()=>holding=false); addEventListener('pointercancel',()=>holding=false);
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+addEventListener('keydown',e=>{ if(e.code==='Space'&&state==='fly'){ e.preventDefault(); holding=true; touched=true; } });
+addEventListener('keyup',e=>{ if(e.code==='Space') holding=false; });
+
+// already flown today: straight to the card
+today().done ? openEnd() : begin();
+})();
+</script>
+</body>
+</html>
