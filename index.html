@@ -216,7 +216,7 @@ textarea::placeholder{color:var(--ink-dim)}
       <div class="remind" id="calRemind" hidden>
         <div class="said">Remind me every morning</div>
         <div class="row"><label class="hint" for="remindTime">At</label><select id="remindTime"><option value="05:00">05:00</option><option value="05:15">05:15</option><option value="05:30">05:30</option><option value="05:45">05:45</option><option value="06:00">06:00</option><option value="06:15">06:15</option><option value="06:30">06:30</option><option value="06:45">06:45</option><option value="07:00" selected>07:00</option><option value="07:15">07:15</option><option value="07:30">07:30</option><option value="07:45">07:45</option><option value="08:00">08:00</option><option value="08:15">08:15</option><option value="08:30">08:30</option><option value="08:45">08:45</option><option value="09:00">09:00</option><option value="09:15">09:15</option><option value="09:30">09:30</option><option value="09:45">09:45</option><option value="10:00">10:00</option><option value="10:15">10:15</option><option value="10:30">10:30</option><option value="10:45">10:45</option></select></div>
-        <div class="row"><a class="ghost" id="calApple" href="#">iPhone / Apple Calendar</a><a class="ghost" id="calGoogle" href="#" target="_blank" rel="noopener">Google Calendar</a></div>
+        <div class="row"><a class="ghost" id="calApple" href="#">iPhone / Apple Calendar</a><a class="ghost" id="calGoogle" href="#" target="_blank" rel="noopener">Google Calendar (signed in)</a></div>
         <p class="hint" id="calMsg"></p>
       </div>
       <div class="remind" id="remind" hidden>
@@ -672,6 +672,8 @@ for(const id of ['calApple','calGoogle']) $(id).addEventListener('click',()=>{ s
 function showRemind(){
   if(store.calTime&&[...$('remindTime').options].some(o=>o.value===store.calTime)) $('remindTime').value=store.calTime;
   calLinks(); $('calRemind').hidden=false;
+  // Google's add-event page only works when you're signed in to Google in this browser; on iPhone, Apple Calendar is the reliable path.
+  $('calGoogle').hidden=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   $('calMsg').textContent=store.calAdded?'Added? You can change the time any day.':'On iPhone, tap Subscribe. For the alert to sound, switch off Remove Alerts on that screen.';
   const local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   $('remind').hidden=store.reminded||(!BEEHIIV_FORM_ID&&!local);
