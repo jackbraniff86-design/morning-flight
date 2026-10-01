@@ -683,10 +683,10 @@ const installed=matchMedia('(display-mode: standalone)').matches||navigator.stan
 const pushCapable='Notification' in window&&'serviceWorker' in navigator&&'PushManager' in window;
 window.OneSignalDeferred=window.OneSignalDeferred||[];
 if(ONESIGNAL_APP_ID&&pushCapable){
-  const scope=location.pathname.replace(/[^/]*$/,'');
+  // Service worker path and scope (/morning-flight/) are set in the OneSignal dashboard, as its docs require for a Typical Site.
   const sdk=document.createElement('script'); sdk.src='https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js'; sdk.defer=true; document.head.appendChild(sdk);
   OneSignalDeferred.push(async OS=>{
-    await OS.init({appId:ONESIGNAL_APP_ID, serviceWorkerPath:scope.slice(1)+'OneSignalSDKWorker.js', serviceWorkerParam:{scope}, allowLocalhostAsSecureOrigin:true});
+    await OS.init({appId:ONESIGNAL_APP_ID});
     if(store.pushOn&&!OS.Notifications.permission){ store.pushOn=false; save(); showRemind(); } // switched off in Settings
   });
 }
