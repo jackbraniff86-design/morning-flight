@@ -37,6 +37,8 @@ body{margin:0;background:var(--sky-top);color:var(--ink);font-family:var(--f-bod
 canvas#c{display:block;width:100%;height:100%;touch-action:none}
 .top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top,0px));pointer-events:none}
 .top .name{font-family:var(--f-display);font-weight:500;font-size:18px;letter-spacing:.01em}
+.top .right{display:flex;align-items:center;gap:12px}
+.skip{pointer-events:auto;background:rgba(20,22,38,.35);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:13px;font-weight:600;letter-spacing:.04em}
 .top .phase{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);font-variant-numeric:tabular-nums}
 .carry{position:absolute;left:0;right:0;top:16%;text-align:center;padding:0 24px;font-family:var(--f-display);font-weight:300;font-size:clamp(20px,5vw,28px);opacity:0;transition:opacity 1.6s;pointer-events:none;text-wrap:balance}
 .carry.on{opacity:.92}
@@ -100,7 +102,7 @@ textarea::placeholder{color:var(--ink-dim)}
 <body>
 <div class="sky" id="sky">
   <canvas id="c" aria-label="Sky. Hold as you breathe in, let go as you breathe out."></canvas>
-  <div class="top"><div class="name">Morning Flight</div><div class="phase" id="phase"></div></div>
+  <div class="top"><div class="name">Morning Flight</div><div class="right"><div class="phase" id="phase"></div><button class="skip" id="btnSkipBreath" hidden>Skip</button></div></div>
   <div class="carry" id="carry"></div>
   <div class="prompt"><div class="cue" id="cue"></div><div class="sub" id="cueSub"></div></div>
 
@@ -319,6 +321,7 @@ function progress(){
 }
 function update(dt){
   clock+=dt;
+  $('btnSkipBreath').hidden=state!=='fly';
   if(state==='intend'){ // plane levels off while you choose
     cam+=dt; const target=0.72*H; vy+=((target-y)*0.8-vy)*Math.min(1,dt*3); y+=vy*dt;
     trail.push(y); if(trail.length>40) trail.shift(); return;
@@ -448,6 +451,8 @@ function drawStarSky(n){ // one star per morning; the newest glows
     g.fillStyle=newest?'#ffc98a':'rgba(244,239,230,.85)'; g.beginPath(); g.arc(x*r.width,sy*r.height,newest?2.6:sr,0,7); g.fill(); }
 }
 $('btnAgain').addEventListener('click',openStart);
+// Skip the breathing: Settle goes straight to the intention, Lift goes straight to the card.
+$('btnSkipBreath').addEventListener('click',()=>{ if(state!=='fly') return; holding=false; seg===SETTLE?openIntend():land(); });
 
 // ---- log: every flight, what you intended, whether you did it ----
 const MOOD={tired:'Tired',wired:'Wired',flat:'Flat',good:'Good'};
