@@ -57,6 +57,9 @@ select{font:inherit;font-size:16px;color:var(--ink);background:var(--fill);borde
 select:focus{border-color:var(--glow)}
 a.ghost{color:var(--ink);text-decoration:none}
 a.ghost:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
+.acct{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%}
+input[type=email]{font:inherit;font-size:17px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:12px 18px;width:100%;max-width:320px;text-align:center;outline:none;-webkit-user-select:text;user-select:text}
+input[type=email]:focus{border-color:var(--glow)}
 input[type=text]{font:inherit;font-size:17px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:12px 18px;width:100%;max-width:320px;text-align:center;outline:none;-webkit-user-select:text;user-select:text}
 input[type=text]:focus{border-color:var(--glow)}
 input::placeholder{color:var(--ink-dim)}
@@ -145,6 +148,7 @@ textarea::placeholder{color:var(--ink-dim)}
       </div>
       <div class="hint" id="starsLine"></div>
       <button class="quiet" data-log hidden>Your log</button>
+      <button class="quiet" data-account hidden></button>
     </div>
   </div>
 
@@ -201,6 +205,33 @@ textarea::placeholder{color:var(--ink-dim)}
     </div>
   </div>
 
+  <!-- Account: email + 6-digit code, so it works inside the home-screen app too -->
+  <div class="overlay" id="ovAccount" hidden>
+    <div class="card">
+      <div class="label">Your account</div>
+      <form class="acct" id="acctEmail">
+        <h2>Sign in with your email</h2>
+        <p>We'll email you a 6-digit code. No password.</p>
+        <input type="email" id="acctEmailIn" placeholder="you@example.com" autocomplete="email" inputmode="email" required>
+        <button class="go" type="submit">Email me a code</button>
+      </form>
+      <form class="acct" id="acctCode" hidden>
+        <h2>Check your email</h2>
+        <p id="acctSentTo"></p>
+        <input type="text" id="acctCodeIn" placeholder="6-digit code" autocomplete="one-time-code" inputmode="numeric" maxlength="10" required>
+        <button class="go" type="submit">Sign in</button>
+        <button class="quiet" type="button" id="acctBack">Use a different email</button>
+      </form>
+      <div class="acct" id="acctIn" hidden>
+        <h2 id="acctWho"></h2>
+        <p>Your mornings are saved to your account. Sign in with the same email on any phone to see them.</p>
+        <button class="ghost" type="button" id="acctOut">Sign out</button>
+      </div>
+      <p class="hint" id="acctMsg" aria-live="polite"></p>
+      <button class="quiet" type="button" id="acctClose">Back</button>
+    </div>
+  </div>
+
   <!-- Card -->
   <div class="overlay" id="ovEnd" hidden>
     <div class="card">
@@ -214,6 +245,11 @@ textarea::placeholder{color:var(--ink-dim)}
       <button class="go" id="btnWeekReady" hidden>Your week is ready</button>
       <div class="row"><button class="go" id="btnShare">Share today's word</button></div>
       <span class="hint" id="shareMsg" aria-live="polite"></span>
+      <div class="remind" id="savePrompt" hidden>
+        <div class="said">Keep your sky</div>
+        <p class="hint">Sign in with your email so your mornings, log and stars follow you to any phone.</p>
+        <button class="ghost" data-account-open>Sign in with email</button>
+      </div>
       <div class="remind" id="calRemind" hidden>
         <div class="said">Remind me every morning</div>
         <div class="row"><label class="hint" for="remindTime">At</label><select id="remindTime"><option value="05:00">05:00</option><option value="05:15">05:15</option><option value="05:30">05:30</option><option value="05:45">05:45</option><option value="06:00">06:00</option><option value="06:15">06:15</option><option value="06:30">06:30</option><option value="06:45">06:45</option><option value="07:00" selected>07:00</option><option value="07:15">07:15</option><option value="07:30">07:30</option><option value="07:45">07:45</option><option value="08:00">08:00</option><option value="08:15">08:15</option><option value="08:30">08:30</option><option value="08:45">08:45</option><option value="09:00">09:00</option><option value="09:15">09:15</option><option value="09:30">09:30</option><option value="09:45">09:45</option><option value="10:00">10:00</option><option value="10:15">10:15</option><option value="10:30">10:30</option><option value="10:45">10:45</option></select></div>
@@ -233,6 +269,7 @@ textarea::placeholder{color:var(--ink-dim)}
         <button class="quiet" id="btnRemindOff">I'm already signed up</button>
       </div>
       <div class="row"><button class="quiet" data-log>Your log</button><button class="quiet" data-week hidden>Your week</button><button class="quiet" id="btnAgain">Fly again</button></div>
+      <button class="quiet" data-account hidden></button>
     </div>
   </div>
 </div>
@@ -268,13 +305,16 @@ const BEEHIIV_FORM_ID='';
 const ONESIGNAL_APP_ID='2311306b-a91f-464e-b38d-b84c7edad3a2';
 // Shown on the share card and in the share text. Change when there's a domain.
 const SITE_URL='https://themorningflight.co.uk/';
+// Paste the Supabase project URL and anon (public) key here to switch on email sign-in (Project Settings > API).
+const SUPABASE_URL='';
+const SUPABASE_ANON_KEY='';
 
 // ---- storage: this browser only, anonymous ----
 const KEY='mf_v1';
 let store={id:'',days:{}};
 try{ const s=JSON.parse(localStorage.getItem(KEY)); if(s&&s.days) store=s; }catch(e){}
 if(!store.id) store.id=Math.random().toString(36).slice(2,10)+Date.now().toString(36);
-function save(){ try{ localStorage.setItem(KEY,JSON.stringify(store)); }catch(e){} }
+function save(){ try{ localStorage.setItem(KEY,JSON.stringify(store)); }catch(e){} if(window.syncSoon) syncSoon(); }
 // A star means a full flight. Skipping the breathing still logs the morning, but earns no star.
 for(const d of Object.values(store.days)) if(d.done&&d.full===undefined) d.full=true; // flights from before skipping existed
 const starCount=()=>Object.values(store.days).filter(d=>d.full).length;
@@ -393,7 +433,7 @@ function frame(t){ const dt=Math.min(0.05,(t-last)/1000); last=t; update(dt); dr
 requestAnimationFrame(frame);
 
 // ---- flow: check → arrive → settle → intend → lift → card ----
-const overlays=['ovCheck','ovStart','ovIntend','ovEnd','ovLog','ovWeek'];
+const overlays=['ovCheck','ovStart','ovIntend','ovEnd','ovLog','ovWeek','ovAccount'];
 function show(id){ overlays.forEach(o=>$(o).hidden=o!==id); }
 function clearCues(){ $('cue').textContent=''; $('cueSub').textContent=''; }
 
@@ -409,6 +449,7 @@ function openStart(reply){
   const n=starCount();
   $('starsLine').textContent=n?`${n} star${n>1?'s':''} in your sky`:'Your first star is waiting';
   document.querySelector('#ovStart [data-log]').hidden=!n;
+  if(window.accountUI) accountUI();
   show('ovStart');
 }
 function begin(){
@@ -499,7 +540,7 @@ function openEnd(){
   const wk=weekData(), canWeek=weekButtons();
   $('btnWeekReady').hidden=!(canWeek&&now.getDay()===0&&!(store.reflections||{})[wk.key]);
   $('shareMsg').textContent='';
-  showRemind();
+  showRemind(); if(window.accountUI) accountUI();
   show('ovEnd'); drawStarSky(n,d.full);
 }
 function starPos(i){ let a=(i+1)*2654435761>>>0; const r=()=>((a=Math.imul(a^a>>>15,a|1)+0x6D2B79F5|0)>>>0)/4294967296; return [0.04+r()*0.92,0.12+r()*0.76,0.8+r()*1.2]; }
@@ -760,8 +801,89 @@ cv.addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('keydown',e=>{ if(e.code==='Space'&&state==='fly'){ e.preventDefault(); holding=true; touched=true; } });
 addEventListener('keyup',e=>{ if(e.code==='Space') holding=false; });
 
+// ---- email sign-in (Supabase). Signed out, everything still works on this device. ----
+let sb=null, user=null, syncTimer=null;
+const accountOn=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
+function mergeStores(local,remote){ // keep everything from both; this device wins on the same field
+  const out={...remote,...local,days:{...(remote.days||{})},reflections:{...(remote.reflections||{}),...(local.reflections||{})}};
+  for(const [k,d] of Object.entries(local.days||{})){ const r=out.days[k]||{}; out.days[k]={...r,...d,full:!!(r.full||d.full),done:!!(r.done||d.done)}; }
+  out.goal=local.goal||remote.goal; out.id=local.id||remote.id;
+  if(!out.goal) delete out.goal;
+  return out;
+}
+async function pullAndMerge(){
+  const {data,error}=await sb.from('flight_data').select('data').eq('user_id',user.id).maybeSingle();
+  if(error) throw error;
+  if(data&&data.data) store=mergeStores(store,data.data);
+  try{ localStorage.setItem(KEY,JSON.stringify(store)); }catch(e){}
+  await pushNow();
+}
+async function pushNow(){
+  if(!sb||!user) return;
+  const {error}=await sb.from('flight_data').upsert({user_id:user.id,data:store,updated_at:new Date().toISOString()});
+  if(error) console.warn('Sync failed',error.message);
+}
+window.syncSoon=()=>{ if(!user) return; clearTimeout(syncTimer); syncTimer=setTimeout(pushNow,1500); };
+function refreshScreen(){ // redraw whichever resting screen is showing after a sync
+  if(state==='fly'||state==='intend') return;
+  if(!$('ovEnd').hidden) openEnd(); else if(!$('ovStart').hidden) openStart(); else if(!$('ovLog').hidden) openLog(logFrom);
+}
+window.accountUI=accountUI;
+function accountUI(){
+  document.querySelectorAll('[data-account]').forEach(b=>{ b.hidden=!accountOn; b.textContent=user?`Signed in as ${user.email}`:'Sign in to save your sky'; });
+  $('savePrompt').hidden=!accountOn||!!user||starCount()<1;
+}
+let acctFrom='ovStart';
+function openAccount(from){
+  acctFrom=from||'ovStart';
+  $('acctEmail').hidden=!!user; $('acctCode').hidden=true; $('acctIn').hidden=!user;
+  if(user) $('acctWho').textContent=user.email;
+  $('acctMsg').textContent='';
+  show('ovAccount');
+}
+function closeAccount(){ acctFrom==='ovEnd'?openEnd():acctFrom==='ovLog'?openLog(logFrom):openStart(); }
+document.querySelectorAll('[data-account],[data-account-open]').forEach(b=>b.addEventListener('click',()=>openAccount(b.closest('.overlay').id)));
+$('acctClose').addEventListener('click',closeAccount);
+for(const id of ['acctEmailIn','acctCodeIn']) $(id).addEventListener('keydown',e=>e.stopPropagation());
+$('acctEmail').addEventListener('submit',async e=>{
+  e.preventDefault(); const email=$('acctEmailIn').value.trim(); if(!email) return;
+  $('acctMsg').textContent='Sending…';
+  const {error}=await sb.auth.signInWithOtp({email,options:{shouldCreateUser:true}});
+  if(error){ $('acctMsg').textContent=`Couldn't send the code: ${error.message}`; return; }
+  $('acctSentTo').textContent=`We sent a code to ${email}. It can take a minute.`;
+  $('acctEmail').hidden=true; $('acctCode').hidden=false; $('acctMsg').textContent=''; $('acctCodeIn').value=''; $('acctCodeIn').focus();
+});
+$('acctBack').addEventListener('click',()=>{ $('acctCode').hidden=true; $('acctEmail').hidden=false; $('acctMsg').textContent=''; });
+$('acctCode').addEventListener('submit',async e=>{
+  e.preventDefault(); const token=$('acctCodeIn').value.replace(/\s/g,''); if(!token) return;
+  $('acctMsg').textContent='Signing in…';
+  const {data,error}=await sb.auth.verifyOtp({email:$('acctEmailIn').value.trim(),token,type:'email'});
+  if(error){ $('acctMsg').textContent='That code didn\'t work. Check it, or send a new one.'; return; }
+  user=data.user;
+  try{ await pullAndMerge(); }catch(err){ $('acctMsg').textContent=`Signed in, but syncing failed: ${err.message}`; }
+  if(window.OneSignalDeferred) OneSignalDeferred.push(OS=>OS.login(user.id));
+  accountUI(); closeAccount();
+});
+$('acctOut').addEventListener('click',async()=>{
+  await pushNow(); await sb.auth.signOut(); user=null;
+  if(window.OneSignalDeferred) OneSignalDeferred.push(OS=>OS.logout());
+  accountUI(); closeAccount();
+});
+async function startAccount(){
+  accountUI(); if(!accountOn) return;
+  try{
+    await new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js'; sc.onload=res; sc.onerror=rej; document.head.appendChild(sc); });
+    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+    const {data}=await sb.auth.getSession();
+    user=data.session?data.session.user:null;
+    if(user){ await pullAndMerge(); refreshScreen(); }
+  }catch(err){ console.warn('Account unavailable',err); }
+  accountUI();
+}
+
 // already flown today: straight to the card
 today().done ? openEnd() : begin();
+startAccount();
 })();
 </script>
 </body>
