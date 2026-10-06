@@ -60,6 +60,15 @@ a.ghost:focus-visible{outline:2px solid var(--glow);outline-offset:3px}
 .acct{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%}
 input[type=email]{font:inherit;font-size:17px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:12px 18px;width:100%;max-width:320px;text-align:center;outline:none;-webkit-user-select:text;user-select:text}
 input[type=email]:focus{border-color:var(--glow)}
+.apple{background:#000;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:14px 28px;font-weight:600;font-size:16px;width:100%;max-width:320px}
+.perks{margin:0;padding:0 0 0 18px;text-align:left;color:var(--ink-dim);line-height:1.6;max-width:34ch}
+.perks li::marker{color:var(--glow)}
+.plan{background:var(--fill);border:1px solid var(--line);border-radius:18px;padding:14px 18px;min-width:140px;display:flex;flex-direction:column;gap:2px;align-items:center}
+.plan b{font-size:20px;font-family:var(--f-display);font-weight:500}
+.plan small{font-size:12px;color:var(--ink-dim)}
+.plan.best{border-color:var(--glow)}
+.legal{max-width:40ch;font-size:11px}
+.legal a{color:var(--ink-dim)}
 input[type=text]{font:inherit;font-size:17px;color:var(--ink);background:var(--fill);border:1px solid var(--line);border-radius:999px;padding:12px 18px;width:100%;max-width:320px;text-align:center;outline:none;-webkit-user-select:text;user-select:text}
 input[type=text]:focus{border-color:var(--glow)}
 input::placeholder{color:var(--ink-dim)}
@@ -221,8 +230,13 @@ textarea::placeholder{color:var(--ink-dim)}
   <div class="overlay" id="ovAccount" hidden>
     <div class="card">
       <div class="label">Your account</div>
+      <div class="acct" id="acctApple" hidden>
+        <h2>Keep your sky</h2>
+        <button class="apple" type="button" id="btnApple"> Continue with Apple</button>
+        <p class="hint">or use your email</p>
+      </div>
       <form class="acct" id="acctEmail">
-        <h2>Sign in with your email</h2>
+        <h2 id="acctEmailHead">Sign in with your email</h2>
         <p>We'll email you a sign-in link. No password.</p>
         <input type="email" id="acctEmailIn" placeholder="you@example.com" autocomplete="email" inputmode="email" required>
         <button class="go" type="submit">Email me a code</button>
@@ -242,6 +256,25 @@ textarea::placeholder{color:var(--ink-dim)}
       </div>
       <p class="hint" id="acctMsg" aria-live="polite"></p>
       <button class="quiet" type="button" id="acctClose">Back</button>
+    </div>
+  </div>
+
+  <!-- Premium: after the free flights, in the app only -->
+  <div class="overlay" id="ovPay" hidden>
+    <div class="card">
+      <div class="label">Morning Flight Premium</div>
+      <h2 id="payHead">Every morning, for less than a coffee a week</h2>
+      <ul class="perks">
+        <li>Unlimited morning flights and Just breathe sessions</li>
+        <li>Longer flights: 4 and 6 minutes</li>
+        <li>Sound that moves with your breath</li>
+        <li>Your log, streak and weekly reflection</li>
+        <li>Your sky saved to your account</li>
+      </ul>
+      <div class="row" id="payProducts"></div>
+      <p class="hint" id="payMsg" aria-live="polite"></p>
+      <div class="row"><button class="quiet" id="btnRestore">Restore purchases</button><button class="quiet" id="btnPayLater">Not now</button></div>
+      <p class="hint legal">Payment is charged to your Apple ID when the free trial ends. Renews automatically until cancelled in Settings. <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use</a> · <a href="https://themorningflight.co.uk/privacy.html" target="_blank" rel="noopener">Privacy</a></p>
     </div>
   </div>
 
@@ -344,8 +377,16 @@ const starCount=()=>Object.values(store.days).filter(d=>d.full).length;
 const today=()=>store.days[todayKey]||(store.days[todayKey]={});
 // Inside the iPhone app, Capacitor gives us real haptics, a native share sheet and notifications without a server.
 const NATIVE=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
-const plugin=n=>{ try{ return NATIVE?window.Capacitor.registerPlugin(n):null; }catch(e){ return null; } };
-const Haptics=plugin('Haptics'), LocalNotes=plugin('LocalNotifications'), NShare=plugin('Share'), NFiles=plugin('Filesystem');
+// Plugins are reached through Capacitor.Plugins (this page isn't bundled, so there's no registerPlugin import).
+const plugin=n=>{ try{ return NATIVE?(window.Capacitor.Plugins[n]||null):null; }catch(e){ return null; } };
+const Haptics=plugin('Haptics'), LocalNotes=plugin('LocalNotifications'), NShare=plugin('Share'), NFiles=plugin('Filesystem'), NStore=plugin('Store'), NApple=plugin('SignInWithApple');
+// In the app, the first flights are free, then Premium. The website is unchanged.
+const FREE_FLIGHTS=3;
+let premium=!NATIVE, storeReady=false;
+async function refreshPremium(){ if(!NStore) return; try{ premium=(await NStore.entitled()).ok; }catch(e){} }
+const flightsFlown=()=>Object.values(store.days).filter(d=>d.done).length;
+const freeLeft=()=>Math.max(0,FREE_FLIGHTS-flightsFlown());
+const needsPay=()=>NATIVE&&!premium&&freeLeft()===0;
 // Flight length (minutes), sound and vibration are remembered on this device.
 const prefs=Object.assign({len:2,sound:true,buzz:true},store.prefs||{});
 const canBuzz=NATIVE||('vibrate' in navigator&&!/iPhone|iPad|iPod/.test(navigator.userAgent));
@@ -394,10 +435,12 @@ function soundStart(){
       // iPhone mutes Web Audio under the silent switch unless a media element is playing; a silent loop switches it to playback.
       unlockEl=new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA='); unlockEl.loop=true; unlockEl.volume=0.01; unlockEl.setAttribute('playsinline',''); unlockEl.play().catch(()=>{});
       const out=ac.createGain(); out.gain.value=0; out.connect(ac.destination);
-      const filt=ac.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=300; filt.Q.value=0.7; filt.connect(out);
+      // The pad sits in 3D space (HRTF): it rises and comes closer as you breathe in, sinks back and widens as you breathe out, and drifts slowly round you.
+      const pan=ac.createPanner(); pan.panningModel='HRTF'; pan.distanceModel='inverse'; pan.refDistance=1; pan.rolloffFactor=0.6; pan.positionX.value=0; pan.positionY.value=-0.5; pan.positionZ.value=-1.5; pan.connect(out);
+      const filt=ac.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=300; filt.Q.value=0.7; filt.connect(pan);
       const mk=(type,freq,detune,vol)=>{ const o=ac.createOscillator(); o.type=type; o.frequency.value=freq; o.detune.value=detune; const g=ac.createGain(); g.gain.value=vol; o.connect(g); g.connect(filt); o.start(); return o; };
       mk('sine',110,0,0.5); mk('triangle',165,-6,0.18); mk('sine',220,8,0.12); mk('triangle',82.4,4,0.25);
-      pad={out,filt};
+      pad={out,filt,pan};
     }
     if(ac.state==='suspended') ac.resume();
     pad.out.gain.setTargetAtTime(0.05,ac.currentTime,0.8);
@@ -407,6 +450,10 @@ function soundBreath(up){ // up: 0 at the bottom of the out-breath, 1 at the top
   if(!ac||!pad||state!=='fly') return;
   pad.out.gain.setTargetAtTime(0.035+0.07*up,ac.currentTime,0.25);
   pad.filt.frequency.setTargetAtTime(260+640*up,ac.currentTime,0.25);
+  const a=clock*0.25, t=ac.currentTime; // a slow orbit, about 25 seconds round
+  pad.pan.positionX.setTargetAtTime(Math.sin(a)*(1.2-0.6*up),t,0.3);
+  pad.pan.positionY.setTargetAtTime(-0.8+1.8*up,t,0.3);
+  pad.pan.positionZ.setTargetAtTime(-Math.cos(a)*(1.6-0.9*up)-0.4,t,0.3);
 }
 function soundRest(){ if(ac&&pad) pad.out.gain.setTargetAtTime(0.012,ac.currentTime,0.6); }
 function soundStop(){ if(ac&&pad) pad.out.gain.setTargetAtTime(0,ac.currentTime,1.2); if(unlockEl) setTimeout(()=>{ try{ unlockEl.pause(); }catch(e){} },4000); }
@@ -529,7 +576,31 @@ function frame(t){ const dt=Math.min(0.05,(t-last)/1000); last=t; update(dt); dr
 requestAnimationFrame(frame);
 
 // ---- flow: check → arrive → settle → intend → lift → card ----
-const overlays=['ovCheck','ovStart','ovIntend','ovEnd','ovLog','ovWeek','ovAccount','ovBreathe'];
+const overlays=['ovCheck','ovStart','ovIntend','ovEnd','ovLog','ovWeek','ovAccount','ovBreathe','ovPay'];
+let payFrom='ovStart';
+async function openPay(from){
+  payFrom=from||'ovStart'; show('ovPay');
+  const box=$('payProducts'); box.innerHTML=''; $('payMsg').textContent='Loading…';
+  $('btnPayLater').textContent=freeLeft()?'Not now':'Back';
+  try{
+    const {products}=await NStore.products();
+    if(!products.length) throw new Error('none');
+    for(const p of products.sort((a,b)=>a.period==='month'?-1:1)){
+      const b=document.createElement('button'); b.className='plan'+(p.period==='year'?' best':''); b.dataset.id=p.id;
+      b.innerHTML=`<small>${p.period==='year'?'Yearly · best value':'Monthly'}</small><b>${p.price}</b><small>${p.trial?`${p.trial} free, then `:''}per ${p.period}</small>`;
+      box.appendChild(b);
+    }
+    $('payMsg').textContent='';
+  }catch(e){ $('payMsg').textContent='Premium isn\'t available in this build yet.'; }
+}
+$('payProducts').addEventListener('click',async e=>{
+  const b=e.target.closest('.plan'); if(!b) return;
+  $('payMsg').textContent='Opening App Store…';
+  try{ const r=await NStore.purchase({id:b.dataset.id}); if(r.ok){ premium=true; $('payMsg').textContent='Welcome to Premium.'; setTimeout(()=>payFrom==='ovEnd'?openEnd():openStart(),800); } else $('payMsg').textContent=r.pending?'Waiting for approval.':''; }
+  catch(err){ $('payMsg').textContent=String(err.message||err); }
+});
+$('btnRestore').addEventListener('click',async()=>{ $('payMsg').textContent='Checking…'; try{ const r=await NStore.restore(); premium=r.ok; $('payMsg').textContent=r.ok?'Restored. Welcome back.':'No subscription found for this Apple ID.'; if(r.ok) setTimeout(()=>openStart(),800); }catch(e){ $('payMsg').textContent='Could not check. Try again.'; } });
+$('btnPayLater').addEventListener('click',()=>payFrom==='ovEnd'?openEnd():openStart());
 function show(id){ overlays.forEach(o=>$(o).hidden=o!==id); }
 function clearCues(){ $('cue').textContent=''; $('cueSub').textContent=''; }
 
@@ -545,6 +616,7 @@ function openStart(reply){
   const n=starCount();
   $('starsLine').textContent=(n?`${n} star${n>1?'s':''} in your sky`:'Your first star is waiting')+(runLine()?` · ${runLine()}`:'');
   document.querySelector('#ovStart [data-log]').hidden=!n;
+  if(NATIVE&&!premium) $('starsLine').textContent+=freeLeft()?` · ${freeLeft()} free flight${freeLeft()===1?'':'s'} left`:' · free flights used';
   if(window.accountUI) accountUI();
   show('ovStart');
 }
@@ -565,13 +637,14 @@ $('ovCheck').addEventListener('click',e=>{
 });
 $('moods').addEventListener('click',e=>{
   const m=e.target.dataset.mood; if(!m) return;
+  if(needsPay()&&!today().done) return openPay('ovStart');
   today().mood=m; save(); skipped=false;
   show(null); seg=SETTLE; st=0; cam=0; trail.length=0; y=laneAt(seg,0).y; vy=0; holding=false; wasInhaling=null; state='fly';
   soundStart();
 });
 let breatheFrom='ovStart';
 document.querySelectorAll('[data-breathe]').forEach(b=>b.addEventListener('click',()=>{
-  breatheFrom=b.closest('.overlay').id; BREATHE.dur=60*prefs.len; skipped=false;
+  breatheFrom=b.closest('.overlay').id; if(needsPay()) return openPay(breatheFrom); BREATHE.dur=60*prefs.len; skipped=false;
   show(null); seg=BREATHE; st=0; cam=0; trail.length=0; y=laneAt(seg,0).y; vy=0; holding=false; wasInhaling=null; state='fly';
   soundStart();
 }));
@@ -976,14 +1049,15 @@ function refreshScreen(){ // redraw whichever resting screen is showing after a 
 }
 window.accountUI=accountUI;
 function accountUI(){
-  document.querySelectorAll('[data-account]').forEach(b=>{ b.hidden=!accountOn; b.textContent=user?`Signed in as ${user.email}`:'Sign in to save your sky'; });
+  document.querySelectorAll('[data-account]').forEach(b=>{ b.hidden=!accountOn; b.textContent=user?`Signed in as ${user.email||'Apple ID'}`:'Sign in to save your sky'; });
   $('savePrompt').hidden=!accountOn||!!user||starCount()<1;
 }
 let acctFrom='ovStart';
 function openAccount(from){
   acctFrom=from||'ovStart';
   $('acctEmail').hidden=!!user; $('acctCode').hidden=true; $('acctIn').hidden=!user;
-  if(user) $('acctWho').textContent=user.email;
+  $('acctApple').hidden=!!user||!NApple; $('acctEmailHead').textContent=NApple?'Or sign in with your email':'Sign in with your email';
+  if(user) $('acctWho').textContent=user.email||'Signed in with Apple';
   $('acctMsg').textContent='';
   show('ovAccount');
 }
@@ -998,6 +1072,19 @@ $('acctEmail').addEventListener('submit',async e=>{
   if(error){ $('acctMsg').textContent=`Couldn't send the code: ${error.message}`; return; }
   $('acctSentTo').textContent=`We sent an email to ${email}. It can take a minute.`;
   $('acctEmail').hidden=true; $('acctCode').hidden=false; $('acctMsg').textContent=''; $('acctCodeIn').value=''; $('acctCodeIn').focus();
+});
+$('btnApple').addEventListener('click',async()=>{
+  $('acctMsg').textContent='';
+  try{
+    const raw=[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
+    const hashed=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+    const r=await NApple.authorize({clientId:'uk.co.themorningflight.app',redirectURI:SITE_URL,scopes:'email name',state:raw.slice(0,8),nonce:hashed});
+    const {data,error}=await sb.auth.signInWithIdToken({provider:'apple',token:r.response.identityToken,nonce:raw});
+    if(error) throw error;
+    user=data.user;
+    try{ await pullAndMerge(); }catch(err){ $('acctMsg').textContent=`Signed in, but syncing failed: ${err.message}`; }
+    accountUI(); closeAccount();
+  }catch(err){ if(!/cancel|1001/i.test(String(err.message||err))) $('acctMsg').textContent=`Apple sign-in didn't work: ${err.message||err}`; }
 });
 $('acctBack').addEventListener('click',()=>{ $('acctCode').hidden=true; $('acctEmail').hidden=false; $('acctMsg').textContent=''; });
 $('acctCode').addEventListener('submit',async e=>{
@@ -1032,6 +1119,7 @@ async function startAccount(){
 // already flown today: straight to the card
 today().done ? openEnd() : begin();
 startAccount();
+refreshPremium().then(()=>{ if(!$('ovStart').hidden) openStart(); });
 })();
 </script>
 </body>
