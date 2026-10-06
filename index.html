@@ -382,11 +382,12 @@ const plugin=n=>{ try{ return NATIVE?(window.Capacitor.Plugins[n]||null):null; }
 const Haptics=plugin('Haptics'), LocalNotes=plugin('LocalNotifications'), NShare=plugin('Share'), NFiles=plugin('Filesystem'), NStore=plugin('Store'), NApple=plugin('SignInWithApple');
 // In the app, the first flights are free, then Premium. The website is unchanged.
 const FREE_FLIGHTS=3;
-let premium=!NATIVE, storeReady=false;
+let premium=!NATIVE, storeUnavailable=false; // if the App Store has no products yet (TestFlight before launch), nothing is gated
 async function refreshPremium(){ if(!NStore) return; try{ premium=(await NStore.entitled()).ok; }catch(e){} }
 const flightsFlown=()=>Object.values(store.days).filter(d=>d.done).length;
 const freeLeft=()=>Math.max(0,FREE_FLIGHTS-flightsFlown());
-const needsPay=()=>NATIVE&&!premium&&freeLeft()===0;
+const needsPay=()=>NATIVE&&!premium&&!storeUnavailable&&freeLeft()===0;
+async function refreshStore(){ if(!NStore) return; try{ const {products}=await NStore.products(); storeUnavailable=!products.length; }catch(e){ storeUnavailable=true; } }
 // Flight length (minutes), sound and vibration are remembered on this device.
 const prefs=Object.assign({len:2,sound:true,buzz:true},store.prefs||{});
 const canBuzz=NATIVE||('vibrate' in navigator&&!/iPhone|iPad|iPod/.test(navigator.userAgent));
@@ -591,7 +592,7 @@ async function openPay(from){
       box.appendChild(b);
     }
     $('payMsg').textContent='';
-  }catch(e){ $('payMsg').textContent='Premium isn\'t available in this build yet.'; }
+  }catch(e){ storeUnavailable=true; $('payMsg').textContent='Premium isn\'t available in this build yet, so nothing is locked. Carry on.'; $('btnPayLater').textContent='Carry on'; }
 }
 $('payProducts').addEventListener('click',async e=>{
   const b=e.target.closest('.plan'); if(!b) return;
@@ -616,7 +617,7 @@ function openStart(reply){
   const n=starCount();
   $('starsLine').textContent=(n?`${n} star${n>1?'s':''} in your sky`:'Your first star is waiting')+(runLine()?` · ${runLine()}`:'');
   document.querySelector('#ovStart [data-log]').hidden=!n;
-  if(NATIVE&&!premium) $('starsLine').textContent+=freeLeft()?` · ${freeLeft()} free flight${freeLeft()===1?'':'s'} left`:' · free flights used';
+  if(NATIVE&&!premium&&!storeUnavailable) $('starsLine').textContent+=freeLeft()?` · ${freeLeft()} free flight${freeLeft()===1?'':'s'} left`:' · free flights used';
   if(window.accountUI) accountUI();
   show('ovStart');
 }
@@ -1119,7 +1120,7 @@ async function startAccount(){
 // already flown today: straight to the card
 today().done ? openEnd() : begin();
 startAccount();
-refreshPremium().then(()=>{ if(!$('ovStart').hidden) openStart(); });
+Promise.all([refreshPremium(),refreshStore()]).then(()=>{ if(!$('ovStart').hidden) openStart(); });
 })();
 </script>
 </body>
