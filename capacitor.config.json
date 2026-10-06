@@ -1,0 +1,14 @@
+{
+  "appId": "uk.co.themorningflight.app",
+  "appName": "Morning Flight",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#1d2340",
+    "scheme": "Morning Flight"
+  },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 0, "backgroundColor": "#1d2340" },
+    "StatusBar": { "style": "DARK", "overlaysWebView": true }
+  }
+}

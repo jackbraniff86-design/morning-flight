@@ -159,7 +159,7 @@ textarea::placeholder{color:var(--ink-dim)}
         <button class="pick" data-mood="good">Good</button>
       </div>
       <div class="hint" id="starsLine"></div>
-      <button class="quiet" data-log hidden>Your log</button>
+      <div class="row"><button class="quiet" data-breathe>Just breathe</button><button class="quiet" data-log hidden>Your log</button></div>
       <button class="quiet" data-account hidden></button>
     </div>
   </div>
@@ -245,6 +245,16 @@ textarea::placeholder{color:var(--ink-dim)}
     </div>
   </div>
 
+  <!-- Just breathe: a breathing session any time of day. No intention, no star, no pressure. -->
+  <div class="overlay" id="ovBreathe" hidden>
+    <div class="card">
+      <div class="label">Landed</div>
+      <h2 id="breatheHead"></h2>
+      <p id="breatheLine"></p>
+      <div class="row"><button class="go" id="btnBreatheDone">Back</button></div>
+    </div>
+  </div>
+
   <!-- Card -->
   <div class="overlay" id="ovEnd" hidden>
     <div class="card">
@@ -281,7 +291,7 @@ textarea::placeholder{color:var(--ink-dim)}
         <div id="remindForm"></div>
         <button class="quiet" id="btnRemindOff">I'm already signed up</button>
       </div>
-      <div class="row"><button class="quiet" data-log>Your log</button><button class="quiet" data-week hidden>Your week</button><button class="quiet" id="btnAgain">Fly again</button></div>
+      <div class="row"><button class="quiet" data-breathe>Just breathe</button><button class="quiet" data-log>Your log</button><button class="quiet" data-week hidden>Your week</button><button class="quiet" id="btnAgain">Fly again</button></div>
       <button class="quiet" data-account hidden></button>
     </div>
   </div>
@@ -332,9 +342,13 @@ function save(){ try{ localStorage.setItem(KEY,JSON.stringify(store)); }catch(e)
 for(const d of Object.values(store.days)) if(d.done&&d.full===undefined) d.full=true; // flights from before skipping existed
 const starCount=()=>Object.values(store.days).filter(d=>d.full).length;
 const today=()=>store.days[todayKey]||(store.days[todayKey]={});
+// Inside the iPhone app, Capacitor gives us real haptics, a native share sheet and notifications without a server.
+const NATIVE=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
+const plugin=n=>{ try{ return NATIVE?window.Capacitor.registerPlugin(n):null; }catch(e){ return null; } };
+const Haptics=plugin('Haptics'), LocalNotes=plugin('LocalNotifications'), NShare=plugin('Share'), NFiles=plugin('Filesystem');
 // Flight length (minutes), sound and vibration are remembered on this device.
 const prefs=Object.assign({len:2,sound:true,buzz:true},store.prefs||{});
-const canBuzz='vibrate' in navigator&&!/iPhone|iPad|iPod/.test(navigator.userAgent);
+const canBuzz=NATIVE||('vibrate' in navigator&&!/iPhone|iPad|iPod/.test(navigator.userAgent));
 function setPrefs(){
   store.prefs=prefs; save();
   document.querySelectorAll('[data-len]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.len===prefs.len)));
@@ -347,7 +361,20 @@ function setPrefs(){
 // ---- flight plan: two breathing segments either side of the intention ----
 const SETTLE={name:'Settle', inh:4, exh:6, dur:40};
 const LIFT  ={name:'Lift',   inh:5, exh:5, dur:40, climb:true};
+const BREATHE={name:'Breathe', inh:4, exh:6, dur:120}; // "Just breathe": one long settle, any time of day
 setPrefs();
+// Mornings in a row. A missed day ends the run, but nothing is taken away: the sky keeps every star.
+function streak(){
+  let n=0; const d=new Date(now); if(!(store.days[todayKey]||{}).full) d.setDate(d.getDate()-1);
+  for(;;){ const k=keyOf(d); if((store.days[k]||{}).full){ n++; d.setDate(d.getDate()-1); } else break; }
+  return n;
+}
+function bestStreak(){
+  const keys=Object.keys(store.days).filter(k=>store.days[k].full).sort(); let best=0,run=0,prev=null;
+  for(const k of keys){ const [y,m,dd]=k.split('-').map(Number); const t=Date.UTC(y,m-1,dd); run=(prev!==null&&t-prev===864e5)?run+1:1; prev=t; best=Math.max(best,run); }
+  return best;
+}
+const runLine=()=>{ const n=streak(); return n>=2?`${n} mornings in a row`:''; };
 // Height of the light at a moment in a segment: rises on the in-breath, sinks on the out-breath.
 function laneAt(seg,st){
   const cycle=seg.inh+seg.exh, k=((st%cycle)+cycle)%cycle;
@@ -389,7 +416,15 @@ function bell(notes){ // a quiet bell at the end of each half of the flight
   notes.forEach(([f,at,vol])=>{ const o=ac.createOscillator(), g=ac.createGain(); o.type='sine'; o.frequency.value=f; g.gain.setValueAtTime(0,t0+at); g.gain.linearRampToValueAtTime(vol,t0+at+0.02); g.gain.exponentialRampToValueAtTime(0.0005,t0+at+2.4); o.connect(g); g.connect(ac.destination); o.start(t0+at); o.stop(t0+at+2.5); });
 }
 const BELL_SETTLE=[[523.25,0,0.08],[783.99,0.18,0.05]], BELL_LAND=[[523.25,0,0.08],[659.25,0.2,0.06],[783.99,0.4,0.06],[1046.5,0.7,0.04]];
-function buzz(pattern){ if(canBuzz&&prefs.buzz) try{ navigator.vibrate(pattern); }catch(e){} }
+function buzz(pattern){
+  if(!canBuzz||!prefs.buzz) return;
+  if(Haptics){ // a light tap at each turn of the breath, a fuller one on landing
+    const big=Array.isArray(pattern)&&pattern.length>3;
+    (big?Haptics.notification({type:'SUCCESS'}):Haptics.impact({style:Array.isArray(pattern)?'LIGHT':'MEDIUM'})).catch(()=>{});
+    return;
+  }
+  try{ navigator.vibrate(pattern); }catch(e){}
+}
 
 // ---- state ----
 let skipped=false, wasInhaling=null;
@@ -475,7 +510,7 @@ function update(dt){
   $('cue').textContent=inhaling?'Breathe in':'Breathe out';
   $('cueSub').textContent=inhaling?(touched?`hold · ${seg.inh} seconds`:'press and hold the screen'):`let go · ${seg.exh} seconds`;
   $('phase').textContent=`${seg.name} · ${Math.max(0,Math.ceil(seg.dur-st))}s`;
-  if(st>=seg.dur){ if(seg===SETTLE){ bell(BELL_SETTLE); soundRest(); openIntend(); } else { bell(BELL_LAND); buzz([40,80,40,80,80]); soundStop(); land(); } }
+  if(st>=seg.dur){ if(seg===SETTLE){ bell(BELL_SETTLE); soundRest(); openIntend(); } else if(seg===BREATHE){ bell(BELL_LAND); buzz([40,80,40,80,80]); soundStop(); finishBreathe(); } else { bell(BELL_LAND); buzz([40,80,40,80,80]); soundStop(); land(); } }
 }
 function draw(){
   drawSky(ctx,W,H,progress(),true);
@@ -494,7 +529,7 @@ function frame(t){ const dt=Math.min(0.05,(t-last)/1000); last=t; update(dt); dr
 requestAnimationFrame(frame);
 
 // ---- flow: check → arrive → settle → intend → lift → card ----
-const overlays=['ovCheck','ovStart','ovIntend','ovEnd','ovLog','ovWeek','ovAccount'];
+const overlays=['ovCheck','ovStart','ovIntend','ovEnd','ovLog','ovWeek','ovAccount','ovBreathe'];
 function show(id){ overlays.forEach(o=>$(o).hidden=o!==id); }
 function clearCues(){ $('cue').textContent=''; $('cueSub').textContent=''; }
 
@@ -508,7 +543,7 @@ function openStart(reply){
   const cr=$('coachReply'); cr.hidden=!reply; if(reply) setCoach(cr,reply);
   $('dayNo').textContent=`Flight #${dayIdx}`;
   const n=starCount();
-  $('starsLine').textContent=n?`${n} star${n>1?'s':''} in your sky`:'Your first star is waiting';
+  $('starsLine').textContent=(n?`${n} star${n>1?'s':''} in your sky`:'Your first star is waiting')+(runLine()?` · ${runLine()}`:'');
   document.querySelector('#ovStart [data-log]').hidden=!n;
   if(window.accountUI) accountUI();
   show('ovStart');
@@ -534,6 +569,22 @@ $('moods').addEventListener('click',e=>{
   show(null); seg=SETTLE; st=0; cam=0; trail.length=0; y=laneAt(seg,0).y; vy=0; holding=false; wasInhaling=null; state='fly';
   soundStart();
 });
+let breatheFrom='ovStart';
+document.querySelectorAll('[data-breathe]').forEach(b=>b.addEventListener('click',()=>{
+  breatheFrom=b.closest('.overlay').id; BREATHE.dur=60*prefs.len; skipped=false;
+  show(null); seg=BREATHE; st=0; cam=0; trail.length=0; y=laneAt(seg,0).y; vy=0; holding=false; wasInhaling=null; state='fly';
+  soundStart();
+}));
+function finishBreathe(){
+  state='end'; clearCues(); $('phase').textContent='Landed';
+  const mins=Math.round(st/60*10)/10, breaths=Math.round(st/(BREATHE.inh+BREATHE.exh));
+  const ex=store.extra||(store.extra={}); ex[todayKey]=(ex[todayKey]||0)+1; save();
+  $('breatheHead').textContent=`${mins} minute${mins===1?'':'s'} · about ${breaths} breath${breaths===1?'':'s'}`;
+  const T=['Slower than the day around you. That is the whole trick.','Come back whenever the day speeds up.','Nothing to win here. You just breathed.','Six breaths a minute is where most people feel the shift.'];
+  $('breatheLine').textContent=T[(ex[todayKey]+dayIdx)%T.length];
+  show('ovBreathe');
+}
+$('btnBreatheDone').addEventListener('click',()=>breatheFrom==='ovEnd'?openEnd():openStart());
 $('opts').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b) return;
   if(b.dataset.len) prefs.len=+b.dataset.len;
@@ -604,7 +655,7 @@ function openEnd(){
   $('word').textContent=word;
   $('intentBack').textContent=intentLine(d)||'Go gently.';
   $('goalBack').hidden=!store.goal; $('goalBack').textContent=store.goal?`Toward: ${store.goal}`:'';
-  $('skyLine').textContent=d.full ? `Morning #${n} · ${n} star${n>1?'s':''} in your sky` : `You skipped the breathing, so no star today. Fly again to earn it.`;
+  $('skyLine').textContent=d.full ? `Morning #${n}${runLine()?` · ${runLine()}`:''}${streak()>=7&&streak()===bestStreak()?' · your best run':''}` : `You skipped the breathing, so no star today. Fly again to earn it.`;
   const cd=coachToday(); $('coachDay').hidden=!cd; if(cd) setCoach($('coachDay'),cd);
   const wk=weekData(), canWeek=weekButtons();
   $('btnWeekReady').hidden=!(canWeek&&now.getDay()===0&&!(store.reflections||{})[wk.key]);
@@ -620,9 +671,9 @@ function drawStarSky(n,glow){ // one star per full flight; today's glows
     if(newest){ const gl=g.createRadialGradient(x*r.width,sy*r.height,0,x*r.width,sy*r.height,14); gl.addColorStop(0,'rgba(255,201,138,.7)'); gl.addColorStop(1,'rgba(255,201,138,0)'); g.fillStyle=gl; g.fillRect(0,0,r.width,r.height); }
     g.fillStyle=newest?'#ffc98a':'rgba(244,239,230,.85)'; g.beginPath(); g.arc(x*r.width,sy*r.height,newest?2.6:sr,0,7); g.fill(); }
 }
-$('btnAgain').addEventListener('click',openStart);
+$('btnAgain').addEventListener('click',()=>openStart());
 // Skip the breathing: Settle goes straight to the intention, Lift goes straight to the card.
-$('btnSkipBreath').addEventListener('click',()=>{ if(state!=='fly') return; holding=false; skipped=true; if(seg===SETTLE){ soundRest(); openIntend(); } else { soundStop(); land(); } });
+$('btnSkipBreath').addEventListener('click',()=>{ if(state!=='fly') return; holding=false; skipped=true; if(seg===SETTLE){ soundRest(); openIntend(); } else if(seg===BREATHE){ soundStop(); finishBreathe(); } else { soundStop(); land(); } });
 
 // ---- log: every flight, what you intended, whether you did it ----
 const MOOD={tired:'Tired',wired:'Wired',flat:'Flat',good:'Good'};
@@ -785,14 +836,24 @@ function calLinks(){
   const q=new URLSearchParams({action:'TEMPLATE',text:'Morning Flight',dates:`${f(d)}/${f(e)}`,recur:'RRULE:FREQ=DAILY',details:`Two minutes. Breathe, set one intention.\n${SITE_URL}`});
   $('calGoogle').href=`https://calendar.google.com/calendar/render?${q}`;
 }
-$('remindTime').addEventListener('change',()=>{ calLinks(); store.calTime=$('remindTime').value; save(); if(store.pushOn) tagTime(); });
+$('remindTime').addEventListener('change',()=>{ calLinks(); store.calTime=$('remindTime').value; save(); if(store.pushOn) NATIVE?scheduleLocal():tagTime(); });
+const PUSH_LINES=['Two minutes. Breathe, then pick one thing for today.',"Today's word is waiting. Two slow minutes first.",'Before the inbox: two minutes for you.',"Your flight is ready. What's one thing for today?",'Slow breath in, slower breath out. Your two minutes are here.'];
+async function scheduleLocal(){ // one notification a day at the chosen time, scheduled on the phone itself
+  if(!LocalNotes) return false;
+  const [hour,minute]=$('remindTime').value.split(':').map(Number);
+  try{
+    await LocalNotes.cancel({notifications:[{id:1}]});
+    await LocalNotes.schedule({notifications:[{id:1,title:'Morning Flight',body:PUSH_LINES[dayIdx%PUSH_LINES.length],schedule:{on:{hour,minute},repeats:true,allowWhileIdle:true}}]});
+    return true;
+  }catch(e){ console.warn('schedule failed',e); return false; }
+}
 
 // ---- push notifications (OneSignal). A daily GitHub Action sends each person's notification at their chosen local time. ----
 const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const installed=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 const pushCapable='Notification' in window&&'serviceWorker' in navigator&&'PushManager' in window;
 window.OneSignalDeferred=window.OneSignalDeferred||[];
-if(ONESIGNAL_APP_ID&&pushCapable){
+if(ONESIGNAL_APP_ID&&pushCapable&&!NATIVE){
   // Service worker path and scope (/morning-flight/) are set in the OneSignal dashboard, as its docs require for a Typical Site.
   const sdk=document.createElement('script'); sdk.src='https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js'; sdk.defer=true; document.head.appendChild(sdk);
   OneSignalDeferred.push(async OS=>{
@@ -801,8 +862,15 @@ if(ONESIGNAL_APP_ID&&pushCapable){
   });
 }
 function tagTime(){ const hm=$('remindTime').value.replace(':',''); OneSignalDeferred.push(OS=>OS.User.addTag('remind_time',hm)); }
-$('btnPush').addEventListener('click',()=>{
+$('btnPush').addEventListener('click',async()=>{
   $('pushMsg').textContent='Asking your phone…';
+  if(NATIVE){
+    let ok=false;
+    try{ const r=await LocalNotes.requestPermissions(); ok=r.display==='granted'; }catch(e){}
+    if(ok&&await scheduleLocal()){ store.pushOn=true; store.calTime=$('remindTime').value; save(); showRemind(); }
+    else $('pushMsg').textContent='Notifications are off for Morning Flight. Allow them in Settings, then try again.';
+    return;
+  }
   OneSignalDeferred.push(async OS=>{
     try{ await OS.Notifications.requestPermission(); }catch(e){}
     if(OS.Notifications.permission){ store.pushOn=true; store.calTime=$('remindTime').value; save(); tagTime(); showRemind(); }
@@ -811,7 +879,8 @@ $('btnPush').addEventListener('click',()=>{
 });
 function showPush(){
   const box=$('pushBox'), btn=$('btnPush'), msg=$('pushMsg');
-  box.hidden=!ONESIGNAL_APP_ID; if(box.hidden) return false;
+  box.hidden=!ONESIGNAL_APP_ID&&!NATIVE; if(box.hidden) return false;
+  if(NATIVE){ btn.hidden=!!store.pushOn; msg.textContent=store.pushOn?`Morning notification on at ${$('remindTime').value}. Change the time above any day.`:'One notification a day at the time you pick. Nothing else.'; return true; }
   if(store.pushOn){ btn.hidden=true; msg.textContent=`Morning notification on at ${$('remindTime').value}. Change the time above any day.`; return true; }
   if(isIOS&&!installed){ btn.hidden=true; msg.textContent='For a morning notification, add Morning Flight to your Home Screen: tap Share, then Add to Home Screen, and open it from there. Or use your calendar below.'; return false; }
   if(!pushCapable){ box.hidden=true; return false; }
@@ -827,7 +896,7 @@ function showRemind(){
   $('calGoogle').hidden=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   $('calMsg').textContent=store.calAdded?'Added? You can change the time any day.':'On iPhone, tap Subscribe. For the alert to sound, switch off Remove Alerts on that screen.';
   const local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-  $('remind').hidden=store.reminded||(!BEEHIIV_FORM_ID&&!local);
+  $('remind').hidden=NATIVE||store.reminded||(!BEEHIIV_FORM_ID&&!local);
   const slot=$('remindForm'); if($('remind').hidden||slot.firstChild) return;
   if(BEEHIIV_FORM_ID){ const f=document.createElement('iframe'); f.src=`https://subscribe-forms.beehiiv.com/${BEEHIIV_FORM_ID}`; f.title='Daily reminder signup'; f.scrolling='no'; slot.appendChild(f); }
   else { slot.className='todo'; slot.textContent='Email signup goes here once the Beehiiv form is connected. Visitors do not see this box.'; }
@@ -854,6 +923,14 @@ async function makeCard(){
 $('btnShare').addEventListener('click',async()=>{
   const text=`Today's word: ${word}. Morning #${starCount()} ☀️\n${SITE_URL}`, msg=$('shareMsg');
   const blob=await makeCard();
+  if(NATIVE&&NShare&&NFiles&&blob){
+    try{
+      const b64=await new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.readAsDataURL(blob); });
+      const w=await NFiles.writeFile({path:`morning-flight-${todayKey}.png`,data:b64,directory:'CACHE'});
+      await NShare.share({title:'Morning Flight',text,files:[w.uri]});
+    }catch(e){ if(!/cancel/i.test(String(e&&e.message))) msg.textContent='Sharing didn\'t open. Try again.'; }
+    return;
+  }
   const file=blob&&new File([blob],`morning-flight-${todayKey}.png`,{type:'image/png'});
   if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
     try{ await navigator.share({files:[file],text}); }catch(e){}
