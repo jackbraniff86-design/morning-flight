@@ -487,7 +487,7 @@ function soundStart(){
       master=ac.createGain(); master.gain.value=prefs.vol/100; master.connect(ac.destination); window.master=master; window.ac=ac;
       const out=ac.createGain(); out.gain.value=0; out.connect(master);
       // The pad sits in 3D space (HRTF): it rises and comes closer as you breathe in, sinks back and widens as you breathe out, and drifts slowly round you.
-      const pan=ac.createPanner(); pan.panningModel='HRTF'; pan.distanceModel='inverse'; pan.refDistance=1; pan.rolloffFactor=0.6; pan.positionX.value=0; pan.positionY.value=-0.5; pan.positionZ.value=-1.5; pan.connect(out);
+      const pan=ac.createPanner(); pan.panningModel='HRTF'; pan.distanceModel='inverse'; pan.refDistance=1; pan.rolloffFactor=0.6; if(pan.positionX){ pan.positionX.value=0; pan.positionY.value=-0.5; pan.positionZ.value=-1.5; } else pan.setPosition(0,-0.5,-1.5); pan.connect(out);
       const filt=ac.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=300; filt.Q.value=0.7; filt.connect(pan);
       const mk=(type,freq,detune,vol)=>{ const o=ac.createOscillator(); o.type=type; o.frequency.value=freq; o.detune.value=detune; const g=ac.createGain(); g.gain.value=vol; o.connect(g); g.connect(filt); o.start(); return o; };
       mk('sine',110,0,0.5); mk('triangle',165,-6,0.18); mk('sine',220,8,0.12); mk('triangle',82.4,4,0.25);
@@ -497,17 +497,25 @@ function soundStart(){
     pad.out.gain.setTargetAtTime(0.05,ac.currentTime,0.8);
   }catch(e){ ac=null; }
 }
+let lastSoundAt=0;
+function glide(param,v,t,tc){ param.cancelScheduledValues(t); param.setTargetAtTime(v,t,tc); } // one pending change per parameter, never a growing queue
 function soundBreath(up){ // up: 0 at the bottom of the out-breath, 1 at the top of the in-breath
   if(!ac||!pad||state!=='fly') return;
-  pad.out.gain.setTargetAtTime(0.035+0.07*up,ac.currentTime,0.25);
-  pad.filt.frequency.setTargetAtTime(260+640*up,ac.currentTime,0.25);
+  // Update ten times a second, not every frame: iPhone Safari runs out of memory if audio changes pile up.
+  if(clock-lastSoundAt<0.1) return; lastSoundAt=clock;
   const a=clock*0.25, t=ac.currentTime; // a slow orbit, about 25 seconds round
-  pad.pan.positionX.setTargetAtTime(Math.sin(a)*(1.2-0.6*up),t,0.3);
-  pad.pan.positionY.setTargetAtTime(-0.8+1.8*up,t,0.3);
-  pad.pan.positionZ.setTargetAtTime(-Math.cos(a)*(1.6-0.9*up)-0.4,t,0.3);
+  try{
+    glide(pad.out.gain,0.035+0.07*up,t,0.25);
+    glide(pad.filt.frequency,260+640*up,t,0.25);
+    if(pad.pan.positionX){
+      glide(pad.pan.positionX,Math.sin(a)*(1.2-0.6*up),t,0.3);
+      glide(pad.pan.positionY,-0.8+1.8*up,t,0.3);
+      glide(pad.pan.positionZ,-Math.cos(a)*(1.6-0.9*up)-0.4,t,0.3);
+    }
+  }catch(e){}
 }
-function soundRest(){ if(ac&&pad) pad.out.gain.setTargetAtTime(0.012,ac.currentTime,0.6); }
-function soundStop(){ if(ac&&pad) pad.out.gain.setTargetAtTime(0,ac.currentTime,1.2); if(unlockEl) setTimeout(()=>{ try{ unlockEl.pause(); }catch(e){} },4000); }
+function soundRest(){ if(ac&&pad) try{ glide(pad.out.gain,0.012,ac.currentTime,0.6); }catch(e){} }
+function soundStop(){ if(ac&&pad) try{ glide(pad.out.gain,0,ac.currentTime,1.2); }catch(e){} if(unlockEl) setTimeout(()=>{ try{ unlockEl.pause(); }catch(e){} },4000); }
 function bell(notes){ // a quiet bell at the end of each half of the flight
   if(!ac||!prefs.sound) return;
   const t0=ac.currentTime;
