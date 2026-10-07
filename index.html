@@ -74,6 +74,10 @@ input[type=email]:focus{border-color:var(--glow)}
 .legal{max-width:40ch;font-size:11px}
 .legal a{color:var(--ink-dim)}
 .ob{gap:16px}
+.care{background:rgba(20,22,38,.55);border:1px solid rgba(255,201,138,.45);border-radius:16px;padding:14px 16px;text-align:left;font-size:14px;line-height:1.5;display:flex;flex-direction:column;gap:8px;max-width:380px}
+.care p{margin:0;color:var(--ink)}
+.consent{display:flex;gap:10px;align-items:flex-start;text-align:left;font-size:13px;color:var(--ink-dim);line-height:1.45;max-width:340px}
+.consent input{margin-top:3px;accent-color:var(--glow)}
 #ovOnboard{place-items:start center;padding-top:calc(72px + env(safe-area-inset-top,0px))}
 .dots{display:flex;gap:6px}
 .dots i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.2)}
@@ -283,10 +287,29 @@ textarea::placeholder{color:var(--ink-dim)}
       <div class="label" id="obLabel"></div>
       <h2 id="obQ"></h2>
       <p id="obSub" hidden></p>
+      <ul class="perks" id="obPoints" hidden>
+        <li>Uses the WHO-5, the World Health Organization's five-question wellbeing index.</li>
+        <li>A Stanford trial found five minutes a day of structured breathing lifted mood more than meditation.</li>
+        <li>Nothing leaves your phone unless you choose to save your results at the end.</li>
+      </ul>
       <div class="stack" id="obOpts"></div>
       <div class="result" id="obResult" hidden></div>
+      <div class="care" id="obCare" hidden>
+        <b>It sounds like things have been heavy lately.</b>
+        <p>A few minutes of breathing can help in the moment, but you deserve more support than an app can give. Talking to your GP is a good first step.</p>
+        <p>If you need to talk to someone now: <b>Samaritans</b>, call 116 123 (free, 24/7). <b>Shout</b>, text SHOUT to 85258 (free, 24/7). <b>NHS 111</b>, option 2 for mental health. If you feel you can't keep yourself safe, call 999 or go to A&amp;E.</p>
+      </div>
       <div class="row"><button class="go" id="obNext" hidden></button></div>
-      <button class="quiet" id="obSkip">Skip for now</button>
+      <form class="acct" id="obSave" hidden>
+        <div class="said">Save your results</div>
+        <p class="hint">We'll email you your two-week re-check and let you know when the iPhone app is out.</p>
+        <input type="email" id="obEmail" placeholder="you@example.com" autocomplete="email" inputmode="email" required>
+        <label class="consent"><input type="checkbox" id="obConsent" required> I'm happy for Morning Flight to store my email and these wellbeing scores so I can compare them later. No marketing from anyone else, unsubscribe any time.</label>
+        <button class="ghost" type="submit">Save my results</button>
+        <span class="hint" id="obSaveMsg" aria-live="polite"></span>
+      </form>
+      <p class="hint legal" id="obLegal" hidden>Morning Flight is a wellbeing tool, not a medical service. These scores are for your own reflection and are not a diagnosis. WHO-5 © Psychiatric Research Unit, WHO Collaborating Centre, Region H, Denmark. Body-clock questions from the reduced Morningness–Eveningness Questionnaire (Adan &amp; Almirall, 1991).</p>
+      <button class="quiet" id="obSkip">Skip, just fly</button>
     </div>
   </div>
 
@@ -637,64 +660,72 @@ requestAnimationFrame(frame);
 // ---- flow: check → arrive → settle → intend → lift → card ----
 const overlays=['ovCheck','ovStart','ovIntend','ovEnd','ovLog','ovWeek','ovAccount','ovBreathe','ovPay','ovOnboard'];
 
-// ---- onboarding: a short baseline from real measures, not a horoscope ----
-// Stress: PSS-4 (Cohen), 0-16. Style: two suppression and two reappraisal items in the spirit of the ERQ. Window: one chronotype question.
-const PSS=[
-  'In the last month, how often have you felt unable to control the important things in your life?',
-  'In the last month, how often have you felt confident about your ability to handle your personal problems?',
-  'In the last month, how often have you felt that things were going your way?',
-  'In the last month, how often have you felt difficulties were piling up so high that you could not overcome them?'];
-const PSS_OPTS=['Never','Almost never','Sometimes','Fairly often','Very often'];
-const STYLE=[['I keep my emotions to myself.','s'],['When I feel something negative, I make sure not to show it.','s'],['When I want to feel less negative, I change how I\'m thinking about the situation.','r'],['I control my emotions by changing the way I think about what\'s happening.','r']];
-const STYLE_OPTS=['Not like me','A bit like me','Somewhere between','Quite like me','Very like me'];
-const WINDOW=[['Early morning, before 7','06:30'],['Mid-morning','07:30'],['Afternoon','08:30'],['Evening','09:00']];
-const STYLE_TEXT={
-  holder:['Holder','You tend to keep feelings in rather than reframe them. Slow breathing suits that: the body lets go before the head has to. Your one thing each day gives the feeling somewhere to go.'],
-  reframer:['Reframer','You naturally change how you think about things. Setting one clear intention plays to that strength; the breathing keeps it from becoming overthinking.'],
-  mixed:['Steady','You use both: sometimes you reframe, sometimes you hold. A short daily reset and one named thing to do covers both.']};
-let ob={step:0,pss:[],style:[],win:null,from:null,recheck:false};
-const stressWord=n=>n>=10?'high':n>=7?'raised':'low';
-function openOnboard(opts){
-  ob={step:0,pss:[],style:[],win:null,recheck:!!(opts&&opts.recheck)};
-  $('obSkip').hidden=ob.recheck; show('ovOnboard'); drawOb();
-}
+// ---- pre-flight check: WHO-5 wellbeing + reduced MEQ body clock. The same check on the website and in the app. ----
+const WHO5=['I have felt cheerful and in good spirits.','I have felt calm and relaxed.','I have felt active and vigorous.','I woke up feeling fresh and rested.','My daily life has been filled with things that interest me.'];
+const WHO5_OPTS=['At no time','Some of the time','Less than half of the time','More than half of the time','Most of the time','All of the time'];
+// rMEQ (Adan & Almirall 1991): each option carries its published score. Q1 also gives a sensible flight time.
+const MEQ=[
+  ['If you were entirely free to plan your day, what time would you get up?',[['5:00 – 6:30am',5,'06:15'],['6:30 – 7:45am',4,'07:00'],['7:45 – 9:45am',3,'08:15'],['9:45 – 11:00am',2,'09:45'],['11:00am – noon',1,'10:45']]],
+  ['In the first half-hour after waking, how tired do you feel?',[['Very tired',1],['Fairly tired',2],['Fairly refreshed',3],['Very refreshed',4]]],
+  ['At what time in the evening do you feel tired and need sleep?',[['8:00 – 9:00pm',5],['9:00 – 10:15pm',4],['10:15pm – 12:45am',3],['12:45 – 2:00am',2],['2:00 – 3:00am',1]]],
+  ['At what time of day do you feel at your best?',[['5:00 – 8:00am',5],['8:00 – 10:00am',4],['10:00am – 5:00pm',3],['5:00 – 10:00pm',2],['10:00pm – 5:00am',1]]],
+  ['Which one of these sounds most like you?',[['Definitely a morning person',6],['More morning than evening',4],['More evening than morning',2],['Definitely an evening person',0]]]];
+const CHRONO=n=>n>=22?['Definite lark','You come alive early. Fly first thing, before the day gets hold of you.']:n>=18?['Morning type','Mornings suit you. A flight soon after waking sets the tone.']:n>=12?['In between','Neither lark nor owl. Pair the flight with something fixed, like your first coffee.']:n>=8?['Evening type','Mornings are harder for you, so keep the flight short and gentle and let it wake you up.']:['Definite owl','You run late. A two-minute flight is the kindest way into the day. Make it the first thing, not the first hour.'];
+const wellWord=n=>n>=70?'good':n>=50?'okay':n>28?'low':'very low';
+let ob={step:0,who:[],meq:[],recheck:false};
+function openOnboard(opts){ ob={step:0,who:[],meq:[],recheck:!!(opts&&opts.recheck)}; show('ovOnboard'); $('ovOnboard').scrollTop=0; drawOb(); }
 function drawOb(){
-  const steps=ob.recheck?PSS.length+1:PSS.length+STYLE.length+2, i=ob.step;
-  $('obDots').innerHTML=[...Array(steps)].map((_,k)=>`<i class="${k<=i?'on':''}"></i>`).join('');
+  const i=ob.step, total=ob.recheck?WHO5.length:WHO5.length+MEQ.length, off=ob.recheck?0:1;
   const q=$('obQ'), opts=$('obOpts'), res=$('obResult'), next=$('obNext'), sub=$('obSub');
-  opts.innerHTML=''; res.hidden=true; next.hidden=true; sub.hidden=true; $('obSkip').hidden=ob.recheck;
+  [res,next,sub,$('obPoints'),$('obCare'),$('obSave'),$('obLegal')].forEach(e=>e.hidden=true); opts.innerHTML=''; $('obSkip').hidden=ob.recheck;
+  $('obDots').innerHTML=i>=off&&i-off<total?[...Array(total)].map((_,k)=>`<i class="${k<=i-off?'on':''}"></i>`).join(''):'';
   const setOpts=(list,fn)=>list.forEach((t,k)=>{ const b=document.createElement('button'); b.className='pick'; b.textContent=t; b.onclick=()=>{ fn(k); ob.step++; drawOb(); }; opts.appendChild(b); });
-  if(i===0&&!ob.recheck){ $('obLabel').textContent='Before your first flight'; q.textContent='Ninety seconds to make this yours.'; sub.hidden=false; sub.textContent='Ten quick questions. You\'ll get your stress load, your style, and the best time for your flight. Snapshots, not a diagnosis.'; next.hidden=false; next.textContent='Let\'s go'; next.onclick=()=>{ ob.step++; drawOb(); }; return; }
-  const off=ob.recheck?0:1;
-  if(i-off<PSS.length){ $('obLabel').textContent=ob.recheck?`Two-week check · ${i-off+1} of 4`:`Stress load · ${i-off+1} of 4`; q.textContent=PSS[i-off]; setOpts(PSS_OPTS,k=>ob.pss[i-off]=k); return; }
-  if(!ob.recheck&&i-off-PSS.length<STYLE.length){ const j=i-off-PSS.length; $('obLabel').textContent=`Your style · ${j+1} of 4`; q.textContent=STYLE[j][0]; setOpts(STYLE_OPTS,k=>ob.style[j]=k); return; }
-  if(!ob.recheck&&i-off-PSS.length===STYLE.length){ $('obLabel').textContent='Your window'; q.textContent='When do you naturally feel most awake?'; setOpts(WINDOW.map(w=>w[0]),k=>ob.win=k); return; }
-  // result
-  const pss=ob.pss.reduce((a,v,k)=>a+((k===1||k===2)?4-v:v),0);
-  const prof=store.profile||{}; const hist=(prof.pssHistory||[]).concat([{date:todayKey,score:pss}]);
-  if(ob.recheck){ store.profile={...prof,pssHistory:hist,lastPss:todayKey}; }
+  if(i===0&&!ob.recheck){
+    $('obLabel').textContent='Pre-flight check · 90 seconds'; q.textContent='How are you really starting your days?';
+    sub.hidden=false; sub.textContent='Ten quick questions. You\'ll get your wellbeing score against the typical adult range, your body clock, and the best time for your flight.';
+    $('obPoints').hidden=false; $('obLegal').hidden=false;
+    next.hidden=false; next.textContent='Start the check'; next.onclick=()=>{ ob.step++; drawOb(); }; return;
+  }
+  if(i-off<WHO5.length){ const j=i-off; $('obLabel').textContent=`${ob.recheck?'Two-week re-check':'Wellbeing'} · over the last two weeks · ${j+1} of 5`; q.textContent=WHO5[j]; setOpts(WHO5_OPTS,k=>ob.who[j]=k); return; }
+  if(!ob.recheck&&i-off-WHO5.length<MEQ.length){ const j=i-off-WHO5.length; $('obLabel').textContent=`Body clock · ${j+1} of 5`; q.textContent=MEQ[j][0]; setOpts(MEQ[j][1].map(o=>o[0]),k=>ob.meq[j]=k); return; }
+  // ---- result ----
+  const who5=ob.who.reduce((a,v)=>a+v,0)*4, prof=store.profile||{};
+  const hist=(prof.whoHistory||[]).concat([{date:todayKey,score:who5}]);
+  if(ob.recheck) store.profile={...prof,who5,whoHistory:hist,lastCheck:todayKey};
   else{
-    const sAvg=(ob.style[0]+ob.style[1])/2, rAvg=(ob.style[2]+ob.style[3])/2;
-    const style=sAvg>rAvg+0.5?'holder':rAvg>sAvg+0.5?'reframer':'mixed';
-    store.profile={pss,style,win:WINDOW[ob.win][1],at:todayKey,lastPss:todayKey,pssHistory:hist};
-    if(!store.calTime) store.calTime=WINDOW[ob.win][1];
+    const meq=ob.meq.reduce((a,k,j)=>a+MEQ[j][1][k][1],0), win=MEQ[0][1][ob.meq[0]][2];
+    store.profile={who5,meq,chrono:CHRONO(meq)[0],win,at:todayKey,lastCheck:todayKey,whoHistory:hist};
+    if(!store.calTime) store.calTime=win;
   }
   save();
-  const p=store.profile, first=hist[0].score, prev=hist.length>1?hist[hist.length-2].score:null;
-  $('obLabel').textContent=ob.recheck?'Two weeks in':'What we found'; $('obDots').innerHTML='';
-  q.textContent=ob.recheck?(pss<prev?'Your stress load has come down.':pss>prev?'Your stress load is up a little.':'Your stress load is about the same.'):'Here\'s your starting point.';
+  const p=store.profile, prev=hist.length>1?hist[hist.length-2].score:null;
+  $('obLabel').textContent=ob.recheck?'Two weeks in':'Your flight plan';
+  q.textContent=ob.recheck?(who5>prev?'Your wellbeing score has gone up.':who5<prev?'Your wellbeing score has dipped.':'Your wellbeing score is steady.'):'Here\'s your starting point.';
   res.hidden=false;
   res.innerHTML=ob.recheck
-    ? `<span class="k">Stress load</span><div><b>${pss}/16</b> ${stressWord(pss)} · was ${prev} two weeks ago${first!==prev?`, ${first} at the start`:''}</div>
-       <span class="k">Next</span><div>Keep the flights going. We'll check again in two weeks.</div>`
-    : `<span class="k">Stress load</span><div><b>${pss}/16</b> ${stressWord(pss)}. Most people start around 6.</div>
-       <span class="k">Your style</span><div><b>${STYLE_TEXT[p.style][0]}</b><br>${STYLE_TEXT[p.style][1]}</div>
-       <span class="k">Your window</span><div><b>${p.win}</b> We'll suggest that for your reminder.</div>
-       <span class="k">Next</span><div>We'll re-check your stress load in two weeks.</div>`;
-  next.hidden=false; next.textContent=ob.recheck?'Carry on':'Take your first flight'; next.onclick=()=>openStart(); $('obSkip').hidden=true;
+    ? `<span class="k">Wellbeing</span><div><b>${who5}/100</b> ${wellWord(who5)} · was ${prev} two weeks ago${Math.abs(who5-prev)>=10?'. That is a meaningful change.':'.'}</div><span class="k">Next</span><div>Keep flying. We'll check again in two weeks.</div>`
+    : `<span class="k">Wellbeing</span><div><b>${who5}/100</b> ${wellWord(who5)}. Typical adults score around 60–70; a change of 10 points is meaningful.</div>
+       <span class="k">Body clock</span><div><b>${p.chrono}</b><br>${CHRONO(p.meq)[1]}</div>
+       <span class="k">Your flight</span><div><b>${p.win}</b> Two slow minutes, one thing for the day. We'll re-check your score in two weeks.</div>`;
+  $('obCare').hidden=who5>28;
+  next.hidden=false; next.textContent=ob.recheck?'Carry on':'Take your first flight'; next.onclick=()=>openStart();
+  if(!ob.recheck&&!store.savedResults){ $('obSave').hidden=false; $('obSaveMsg').textContent=''; }
+  $('obLegal').hidden=false; $('obSkip').hidden=true;
 }
 $('obSkip').addEventListener('click',()=>{ store.profile={skipped:true,at:todayKey}; save(); openStart(); });
-const recheckDue=()=>{ const p=store.profile; if(!p||p.skipped||!p.lastPss) return false; const [y,m,d]=p.lastPss.split('-').map(Number); return (dayUTC(now)-Date.UTC(y,m-1,d))/864e5>=14&&flightsFlown()>=5; };
+$('obEmail').addEventListener('keydown',e=>e.stopPropagation());
+$('obSave').addEventListener('submit',async e=>{
+  e.preventDefault(); const email=$('obEmail').value.trim(), p=store.profile||{};
+  if(!$('obConsent').checked){ $('obSaveMsg').textContent='Tick the box so we can store your results.'; return; }
+  $('obSaveMsg').textContent='Saving…';
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/signups`,{method:'POST',headers:{apikey:SUPABASE_ANON_KEY,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({email,who5:p.who5,chronotype:p.chrono,window_time:p.win,consent:true,source:NATIVE?'app':'web'})});
+    if(!r.ok) throw new Error(r.status);
+    store.savedResults=email; save();
+    $('obSaveMsg').textContent='Saved. We\'ll be in touch for your two-week re-check.'; $('obSave').querySelector('button').hidden=true;
+  }catch(err){ $('obSaveMsg').textContent='That didn\'t save. Check your connection and try again.'; }
+});
+const recheckDue=()=>{ const p=store.profile; if(!p||p.skipped||!p.lastCheck) return false; const [y,m,d]=p.lastCheck.split('-').map(Number); return (dayUTC(now)-Date.UTC(y,m-1,d))/864e5>=14&&flightsFlown()>=5; };
 let payFrom='ovStart';
 async function openPay(from){
   payFrom=from||'ovStart'; show('ovPay');
@@ -741,7 +772,7 @@ function openStart(reply){
   document.querySelector('#ovStart [data-log]').hidden=!n;
   if(NATIVE&&!premium&&!storeUnavailable) $('starsLine').textContent+=freeLeft()?` · ${freeLeft()} free flight${freeLeft()===1?'':'s'} left`:' · free flights used';
   if(window.accountUI) accountUI();
-  if(!reply&&recheckDue()){ setCoach(cr,['Two weeks in. Four quick questions to see where your stress load is now.','']); const b=document.createElement('button'); b.className='ghost'; b.textContent='Check in'; b.style.marginTop='8px'; b.onclick=()=>openOnboard({recheck:true}); cr.appendChild(b); }
+  if(!reply&&recheckDue()){ setCoach(cr,['Two weeks in. Five quick questions to see where your wellbeing score is now.','']); const b=document.createElement('button'); b.className='ghost'; b.textContent='Check in'; b.style.marginTop='8px'; b.onclick=()=>openOnboard({recheck:true}); cr.appendChild(b); }
   show('ovStart');
 }
 function begin(){
@@ -861,7 +892,7 @@ function openEnd(){
   $('shareMsg').textContent='';
   const offer=NATIVE&&!premium&&!storeUnavailable&&flightsFlown()===1;
   $('firstOffer').hidden=!offer;
-  if(offer){ const p=store.profile||{}; $('firstOfferLine').textContent=`${p.win?`Your ${p.win} flight, `:''}${p.style?STYLE_TEXT[p.style][0].toLowerCase()+'-friendly pacing, ':''}sound, your log and the two-week check. Free for 7 days, then £4.99 a month or £39.99 a year. Cancel any time.`; }
+  if(offer){ const p=store.profile||{}; $('firstOfferLine').textContent=`${p.win?`Your ${p.win} flight, `:''}sound, your log and your two-week wellbeing re-check. Free for 7 days, then £4.99 a month or £39.99 a year. Cancel any time.`; }
   showRemind(); if(window.accountUI) accountUI();
   show('ovEnd'); drawStarSky(n,d.full);
 }
@@ -956,7 +987,7 @@ function coachAfterCheck(k){
 // On the card after landing
 function coachToday(){
   const d=today(), by=slotStats(), p=store.profile;
-  if(p&&p.style&&flightsFlown()<=2){ const t=STYLE_TEXT[p.style]; return [`${t[0]}: ${p.style==='holder'?'you let the body go first, then named one thing. That is the order that works for you.':p.style==='reframer'?'you named one clear thing. Keep it that specific tomorrow.':'a reset and one named thing. Keep both small.'}`,`Your stress load was ${p.pss}/16. We'll check it again in two weeks.`]; }
+  if(p&&p.who5!=null&&p.chrono&&flightsFlown()<=2) return [`${p.chrono}: ${CHRONO(p.meq)[1]}`,`Your wellbeing score was ${p.who5}/100. We'll check it again in two weeks.`];
   const recent=Object.entries(store.days).sort((a,b)=>a[0]<b[0]?1:-1).slice(0,5).map(([,x])=>x.mood).filter(Boolean);
   const tiredN=recent.filter(m=>m==='tired').length, wiredN=recent.filter(m=>m==='wired').length;
   if(recent.length>=4&&tiredN>=3) return [`You've said tired ${tiredN} of your last ${recent.length} mornings.`,'That is a pattern worth noticing. Is tonight a chance for an earlier night?'];
