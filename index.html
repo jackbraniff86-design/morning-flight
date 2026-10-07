@@ -227,7 +227,13 @@ textarea::placeholder{color:var(--ink-dim)}
       <p id="logNote" hidden></p>
       <button class="ghost" data-week hidden>Your week</button>
       <ol class="log" id="logList"></ol>
-      <p class="hint">Saved on this device only.</p>
+      <p class="hint">Saved on this device only, unless you sign in.</p>
+      <button class="quiet" id="btnWipe">Delete all my data from this device</button>
+      <div class="care" id="wipeConfirm" hidden>
+        <b>Delete everything on this device?</b>
+        <p>Your log, stars, reflections and check results will be erased from this phone. If you're signed in, use Your account to delete your account too.</p>
+        <div class="row"><button class="ghost" id="wipeYes">Delete</button><button class="quiet" id="wipeNo">Keep</button></div>
+      </div>
       <button class="ghost" id="btnLogBack">Back</button>
     </div>
   </div>
@@ -274,6 +280,12 @@ textarea::placeholder{color:var(--ink-dim)}
         <h2 id="acctWho"></h2>
         <p>Your mornings are saved to your account. Sign in with the same email on any phone to see them.</p>
         <button class="ghost" type="button" id="acctOut">Sign out</button>
+        <button class="quiet" type="button" id="acctDelete">Delete my account and data</button>
+        <div class="care" id="acctDeleteConfirm" hidden>
+          <b>Delete your account for good?</b>
+          <p>This permanently deletes your account, your log, your reflections and your stars, on this phone and on our servers. It can't be undone. A subscription is separate: cancel it in your iPhone Settings, under your Apple ID, Subscriptions.</p>
+          <div class="row"><button class="ghost" type="button" id="acctDeleteYes">Delete for good</button><button class="quiet" type="button" id="acctDeleteNo">Keep my account</button></div>
+        </div>
       </div>
       <p class="hint" id="acctMsg" aria-live="polite"></p>
       <button class="quiet" type="button" id="acctClose">Back</button>
@@ -1217,7 +1229,7 @@ function accountUI(){
 let acctFrom='ovStart';
 function openAccount(from){
   acctFrom=from||'ovStart';
-  $('acctEmail').hidden=!!user; $('acctCode').hidden=true; $('acctIn').hidden=!user;
+  $('acctEmail').hidden=!!user; $('acctCode').hidden=true; $('acctIn').hidden=!user; $('acctDeleteConfirm').hidden=true;
   $('acctApple').hidden=!!user||!NApple; $('acctEmailHead').textContent=NApple?'Or sign in with your email':'Sign in with your email';
   if(user) $('acctWho').textContent=user.email||'Signed in with Apple';
   $('acctMsg').textContent='';
@@ -1262,6 +1274,22 @@ $('acctCode').addEventListener('submit',async e=>{
   rc()&&rc().then(P=>P&&P.logIn({appUserID:user.id}).then(r=>{ premium=hasPremium(r.customerInfo); }).catch(()=>{}));
   accountUI(); closeAccount();
 });
+function wipeLocal(){ try{ localStorage.removeItem(KEY); }catch(e){} store={id:'',days:{}}; }
+$('acctDelete').addEventListener('click',()=>{ $('acctDeleteConfirm').hidden=false; });
+$('acctDeleteNo').addEventListener('click',()=>{ $('acctDeleteConfirm').hidden=true; });
+$('acctDeleteYes').addEventListener('click',async()=>{
+  $('acctMsg').textContent='Deleting…';
+  try{
+    const {error}=await sb.rpc('delete_my_account'); if(error) throw error;
+    try{ await sb.auth.signOut(); }catch(e){}
+    rc()&&rc().then(P=>P&&P.logOut().catch(()=>{}));
+    if(window.OneSignalDeferred) OneSignalDeferred.push(OS=>OS.logout());
+    user=null; wipeLocal(); location.reload();
+  }catch(err){ $('acctMsg').textContent=`Couldn't delete your account: ${err.message||err}. Email hello@themorningflight.co.uk and we'll do it within 7 days.`; }
+});
+$('btnWipe').addEventListener('click',()=>{ $('wipeConfirm').hidden=false; });
+$('wipeNo').addEventListener('click',()=>{ $('wipeConfirm').hidden=true; });
+$('wipeYes').addEventListener('click',()=>{ wipeLocal(); location.reload(); });
 $('acctOut').addEventListener('click',async()=>{
   await pushNow(); await sb.auth.signOut(); user=null;
   if(window.OneSignalDeferred) OneSignalDeferred.push(OS=>OS.logout());
