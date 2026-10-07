@@ -2,6 +2,7 @@
 
 - App Store Connect app id 6819866579, bundle id uk.co.themorningflight.app (bundle id record 8R445LPVUU), team 8759KGVN28.
 - Version 1.0 id ac5fed32-4fcf-43d7-8dfc-ea2d70e90086, en-GB localisation 862183a1-9210-434e-b669-bc8e4580e3ee, appInfo df40934b-8d8a-4b45-915e-230ec8b49a30.
+- Purchases go through RevenueCat: project 36db9e17 (Morning Flight), App Store app appe9573ef906, public SDK key in index.html (REVENUECAT_KEY), entitlement `premium`, offering `default` with $rc_monthly / $rc_annual packages. In-App Purchase key WMA892M6ND and ASC API key M37M4DUU6Y are configured there.
 - Subscription group 22448144 "Morning Flight Premium". Products the app expects: uk.co.themorningflight.premium.monthly (£4.99) and uk.co.themorningflight.premium.annual (£39.99), 7-day free trial.
 - TestFlight internal group 47a36a91-723c-48fe-a745-40f34eed8051 (access to all builds).
 - Signing: Apple Distribution cert 529GT85345 whose key lives in ~/Library/Keychains/mf-dist.keychain-db (password mfpass, files in ~/.appstoreconnect/dist). App Store profile "Morning Flight App Store".
