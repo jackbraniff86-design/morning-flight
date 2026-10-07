@@ -8,7 +8,17 @@
     "scheme": "Morning Flight"
   },
   "plugins": {
-    "SplashScreen": { "launchShowDuration": 0, "backgroundColor": "#1d2340" },
-    "StatusBar": { "style": "DARK", "overlaysWebView": true }
+    "SplashScreen": {
+      "launchShowDuration": 0,
+      "backgroundColor": "#1d2340"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "overlaysWebView": true
+    },
+    "Keyboard": {
+      "resize": "native",
+      "resizeOnFullScreen": true
+    }
   }
 }

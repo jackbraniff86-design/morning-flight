@@ -33,6 +33,9 @@
 html,body{height:100%}
 body{margin:0;background:var(--sky-top);color:var(--ink);font-family:var(--f-body);font-size:16px;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
 [hidden]{display:none!important}
+/* iOS refuses to focus inputs under a user-select:none ancestor unless they opt back in */
+input,textarea,select{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+#ovAccount{place-items:start center;padding-top:calc(72px + env(safe-area-inset-top,0px))}
 .sky{position:relative;height:100%;width:100%}
 canvas#c{display:block;width:100%;height:100%;touch-action:none}
 .top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top,0px));pointer-events:none}
@@ -1066,6 +1069,8 @@ function closeAccount(){ acctFrom==='ovEnd'?openEnd():acctFrom==='ovLog'?openLog
 document.querySelectorAll('[data-account],[data-account-open]').forEach(b=>b.addEventListener('click',()=>openAccount(b.closest('.overlay').id)));
 $('acctClose').addEventListener('click',closeAccount);
 for(const id of ['acctEmailIn','acctCodeIn']) $(id).addEventListener('keydown',e=>e.stopPropagation());
+// Keep the field you're typing in above the keyboard.
+document.addEventListener('focusin',e=>{ if(e.target.matches('input,textarea')) setTimeout(()=>e.target.scrollIntoView({block:'center',behavior:'smooth'}),250); });
 $('acctEmail').addEventListener('submit',async e=>{
   e.preventDefault(); const email=$('acctEmailIn').value.trim(); if(!email) return;
   $('acctMsg').textContent='Sending…';
