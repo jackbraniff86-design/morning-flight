@@ -415,15 +415,26 @@ const today=()=>store.days[todayKey]||(store.days[todayKey]={});
 const NATIVE=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
 // Plugins are reached through Capacitor.Plugins (this page isn't bundled, so there's no registerPlugin import).
 const plugin=n=>{ try{ return NATIVE?(window.Capacitor.Plugins[n]||null):null; }catch(e){ return null; } };
-const Haptics=plugin('Haptics'), LocalNotes=plugin('LocalNotifications'), NShare=plugin('Share'), NFiles=plugin('Filesystem'), NStore=plugin('Store'), NApple=plugin('SignInWithApple');
+const Haptics=plugin('Haptics'), LocalNotes=plugin('LocalNotifications'), NShare=plugin('Share'), NFiles=plugin('Filesystem'), NApple=plugin('SignInWithApple'), Purchases=plugin('Purchases');
+// Premium runs through RevenueCat. Public key from the RevenueCat dashboard (Morning Flight project > API keys).
+const REVENUECAT_KEY='appl_fbvtetoxXccIeNxKjZxqniJThqQ';
+let rcReady=null;
+function rc(){ // configure once, on first use
+  if(!Purchases||!REVENUECAT_KEY) return null;
+  if(!rcReady) rcReady=Purchases.configure({apiKey:REVENUECAT_KEY}).then(()=>Purchases).catch(e=>{ console.warn('RevenueCat',e); return null; });
+  return rcReady;
+}
+const hasPremium=info=>!!(info&&info.entitlements&&info.entitlements.active&&info.entitlements.active.premium);
 // In the app, the first flights are free, then Premium. The website is unchanged.
 const FREE_FLIGHTS=3;
 let premium=!NATIVE, storeUnavailable=false; // if the App Store has no products yet (TestFlight before launch), nothing is gated
-async function refreshPremium(){ if(!NStore) return; try{ premium=(await NStore.entitled()).ok; }catch(e){} }
+async function refreshPremium(){ const P=await rc(); if(!P) return; try{ const {customerInfo}=await P.getCustomerInfo(); premium=hasPremium(customerInfo); }catch(e){} }
 const flightsFlown=()=>Object.values(store.days).filter(d=>d.done).length;
 const freeLeft=()=>Math.max(0,FREE_FLIGHTS-flightsFlown());
 const needsPay=()=>NATIVE&&!premium&&!storeUnavailable&&freeLeft()===0;
-async function refreshStore(){ if(!NStore) return; try{ const {products}=await NStore.products(); storeUnavailable=!products.length; }catch(e){ storeUnavailable=true; } }
+let rcPackages=[];
+async function loadPackages(){ const P=await rc(); if(!P) throw new Error('no store'); const {current}=await P.getOfferings(); rcPackages=(current&&current.availablePackages)||[]; return rcPackages; }
+async function refreshStore(){ if(!NATIVE) return; try{ storeUnavailable=!(await loadPackages()).length; }catch(e){ storeUnavailable=true; } }
 // Flight length (minutes), sound and vibration are remembered on this device.
 const prefs=Object.assign({len:2,sound:true,buzz:true,vol:70},store.prefs||{});
 const canBuzz=NATIVE||('vibrate' in navigator&&!/iPhone|iPad|iPod/.test(navigator.userAgent));
@@ -682,8 +693,8 @@ async function openPay(from){
   const box=$('payProducts'); box.innerHTML=''; $('payMsg').textContent='Loading…';
   $('btnPayLater').textContent=freeLeft()?'Not now':'Back';
   try{
-    const {products}=await NStore.products();
-    if(!products.length) throw new Error('none');
+    const pk=await loadPackages(); if(!pk.length) throw new Error('none');
+    const products=pk.map(k=>{ const pr=k.product, sub=pr.subscriptionPeriod||'', intro=pr.introPrice; return {id:k.identifier, price:pr.priceString, period:/Y/.test(sub)||k.packageType==='ANNUAL'?'year':'month', trial:intro&&intro.price===0?`${intro.periodNumberOfUnits} ${String(intro.periodUnit||'').toLowerCase()}${intro.periodNumberOfUnits>1?'s':''}`:''}; });
     for(const p of products.sort((a,b)=>a.period==='month'?-1:1)){
       const b=document.createElement('button'); b.className='plan'+(p.period==='year'?' best':''); b.dataset.id=p.id;
       b.innerHTML=`<small>${p.period==='year'?'Yearly · best value':'Monthly'}</small><b>${p.price}</b><small>${p.trial?`${p.trial} free, then `:''}per ${p.period}</small>`;
@@ -695,10 +706,14 @@ async function openPay(from){
 $('payProducts').addEventListener('click',async e=>{
   const b=e.target.closest('.plan'); if(!b) return;
   $('payMsg').textContent='Opening App Store…';
-  try{ const r=await NStore.purchase({id:b.dataset.id}); if(r.ok){ premium=true; $('payMsg').textContent='Welcome to Premium.'; setTimeout(()=>payFrom==='ovEnd'?openEnd():openStart(),800); } else $('payMsg').textContent=r.pending?'Waiting for approval.':''; }
-  catch(err){ $('payMsg').textContent=String(err.message||err); }
+  try{
+    const P=await rc(), pkg=rcPackages.find(k=>k.identifier===b.dataset.id);
+    const {customerInfo}=await P.purchasePackage({aPackage:pkg});
+    premium=hasPremium(customerInfo);
+    if(premium){ $('payMsg').textContent='Welcome to Premium.'; setTimeout(()=>payFrom==='ovEnd'?openEnd():openStart(),800); } else $('payMsg').textContent='';
+  }catch(err){ $('payMsg').textContent=/cancel/i.test(String(err.message||err))?'':String(err.message||err); }
 });
-$('btnRestore').addEventListener('click',async()=>{ $('payMsg').textContent='Checking…'; try{ const r=await NStore.restore(); premium=r.ok; $('payMsg').textContent=r.ok?'Restored. Welcome back.':'No subscription found for this Apple ID.'; if(r.ok) setTimeout(()=>openStart(),800); }catch(e){ $('payMsg').textContent='Could not check. Try again.'; } });
+$('btnRestore').addEventListener('click',async()=>{ $('payMsg').textContent='Checking…'; try{ const P=await rc(); const {customerInfo}=await P.restorePurchases(); premium=hasPremium(customerInfo); $('payMsg').textContent=premium?'Restored. Welcome back.':'No subscription found for this Apple ID.'; if(premium) setTimeout(()=>openStart(),800); }catch(e){ $('payMsg').textContent='Could not check. Try again.'; } });
 $('btnFirstOffer').addEventListener('click',()=>openPay('ovEnd'));
 $('btnPayLater').addEventListener('click',()=>payFrom==='ovEnd'?openEnd():openStart());
 function show(id){ overlays.forEach(o=>$(o).hidden=o!==id); }
@@ -1205,11 +1220,13 @@ $('acctCode').addEventListener('submit',async e=>{
   user=data.user;
   try{ await pullAndMerge(); }catch(err){ $('acctMsg').textContent=`Signed in, but syncing failed: ${err.message}`; }
   if(window.OneSignalDeferred) OneSignalDeferred.push(OS=>OS.login(user.id));
+  rc()&&rc().then(P=>P&&P.logIn({appUserID:user.id}).then(r=>{ premium=hasPremium(r.customerInfo); }).catch(()=>{}));
   accountUI(); closeAccount();
 });
 $('acctOut').addEventListener('click',async()=>{
   await pushNow(); await sb.auth.signOut(); user=null;
   if(window.OneSignalDeferred) OneSignalDeferred.push(OS=>OS.logout());
+  rc()&&rc().then(P=>P&&P.logOut().then(r=>{ premium=hasPremium(r.customerInfo); }).catch(()=>{}));
   accountUI(); closeAccount();
 });
 async function startAccount(){
@@ -1221,6 +1238,7 @@ async function startAccount(){
     user=data.session?data.session.user:null;
     if(location.hash.includes('access_token')||location.hash.includes('error')) history.replaceState(null,'',location.pathname);
     if(user&&window.OneSignalDeferred) OneSignalDeferred.push(OS=>OS.login(user.id));
+    if(user) rc()&&rc().then(P=>P&&P.logIn({appUserID:user.id}).then(r=>{ premium=hasPremium(r.customerInfo); if(!$('ovStart').hidden) openStart(); }).catch(()=>{}));
     if(user){ await pullAndMerge(); refreshScreen(); }
   }catch(err){ console.warn('Account unavailable',err); }
   accountUI();
