@@ -264,15 +264,14 @@ textarea::placeholder{color:var(--ink-dim)}
       </div>
       <form class="acct" id="acctEmail">
         <h2 id="acctEmailHead">Sign in with your email</h2>
-        <p>We'll email you a sign-in link. No password.</p>
+        <p>We'll email you a sign-in code. No password.</p>
         <input type="email" id="acctEmailIn" placeholder="you@example.com" autocomplete="email" inputmode="email" required>
         <button class="go" type="submit">Email me a code</button>
       </form>
       <form class="acct" id="acctCode" hidden>
         <h2>Check your email</h2>
         <p id="acctSentTo"></p>
-        <p class="hint">Tap the link in the email to sign in. If the email shows a 6-digit code instead, type it here.</p>
-        <input type="text" id="acctCodeIn" placeholder="6-digit code" autocomplete="one-time-code" inputmode="numeric" maxlength="10" required>
+        <input type="text" id="acctCodeIn" placeholder="Code from the email" autocomplete="one-time-code" inputmode="numeric" maxlength="10" required>
         <button class="go" type="submit">Sign in</button>
         <button class="quiet" type="button" id="acctBack">Use a different email</button>
       </form>
@@ -1244,9 +1243,9 @@ document.addEventListener('focusin',e=>{ if(e.target.matches('input,textarea')) 
 $('acctEmail').addEventListener('submit',async e=>{
   e.preventDefault(); const email=$('acctEmailIn').value.trim(); if(!email) return;
   $('acctMsg').textContent='Sending…';
-  const {error}=await sb.auth.signInWithOtp({email,options:{shouldCreateUser:true,emailRedirectTo:SITE_URL}});
+  const {error}=await sb.auth.signInWithOtp({email,options:{shouldCreateUser:true}});
   if(error){ $('acctMsg').textContent=`Couldn't send the code: ${error.message}`; return; }
-  $('acctSentTo').textContent=`We sent an email to ${email}. It can take a minute.`;
+  $('acctSentTo').textContent=`We sent a code to ${email}. It can take a minute, and check your spam.`;
   $('acctEmail').hidden=true; $('acctCode').hidden=false; $('acctMsg').textContent=''; $('acctCodeIn').value=''; $('acctCodeIn').focus();
 });
 $('btnApple').addEventListener('click',async()=>{
