@@ -43,7 +43,7 @@ canvas#c{display:block;width:100%;height:100%;touch-action:none}
 .top .right{display:flex;align-items:center;gap:12px}
 .skip{pointer-events:auto;background:rgba(20,22,38,.35);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:13px;font-weight:600;letter-spacing:.04em}
 .top .phase{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);font-variant-numeric:tabular-nums}
-.carry{position:absolute;left:0;right:0;top:16%;text-align:center;padding:0 24px;font-family:var(--f-display);font-weight:300;font-size:clamp(20px,5vw,28px);opacity:0;transition:opacity 1.6s;pointer-events:none;text-wrap:balance}
+.carry{position:absolute;left:0;right:0;top:14%;text-align:center;padding:0 24px;font-family:var(--f-display);font-weight:300;font-size:clamp(20px,5vw,28px);opacity:0;transition:opacity 1.6s;pointer-events:none;text-wrap:balance}
 .carry.on{opacity:.92}
 .prompt{position:absolute;left:0;right:0;bottom:0;text-align:center;padding:18px;padding-bottom:calc(22px + env(safe-area-inset-bottom,0px));pointer-events:none}
 .prompt .cue{font-family:var(--f-display);font-weight:300;font-size:clamp(26px,6vw,40px);letter-spacing:.02em}
@@ -74,6 +74,14 @@ input[type=email]:focus{border-color:var(--glow)}
 .legal{max-width:40ch;font-size:11px}
 .legal a{color:var(--ink-dim)}
 .ob{gap:16px}
+.talk{gap:18px;max-width:440px}
+.talkline{font-family:var(--f-display);font-weight:300;font-size:clamp(24px,6.4vw,32px);line-height:1.2;margin:0;color:var(--ink);text-wrap:pretty;min-height:1.2em}
+.talkline em{font-style:italic;color:var(--glow)}
+.talkline .ghost{opacity:.3}
+.talkform{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%}
+.plancard{width:100%;max-width:380px;display:grid;grid-template-columns:auto 1fr;gap:10px 14px;text-align:left;font-size:15px;line-height:1.45}
+.plancard .k{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);padding-top:3px}
+.plancard .ifthen{font-family:var(--f-display);color:var(--glow);font-size:18px;line-height:1.3}
 .care{background:rgba(20,22,38,.55);border:1px solid rgba(255,201,138,.45);border-radius:16px;padding:14px 16px;text-align:left;font-size:14px;line-height:1.5;display:flex;flex-direction:column;gap:8px;max-width:380px}
 .care p{margin:0;color:var(--ink)}
 .consent{display:flex;gap:10px;align-items:flex-start;text-align:left;font-size:13px;color:var(--ink-dim);line-height:1.45;max-width:340px}
@@ -180,6 +188,8 @@ textarea::placeholder{color:var(--ink-dim)}
         <button class="chip" id="optSound">Sound</button>
         <button class="chip" id="optBuzz" hidden>Vibration</button>
       </div>
+      <div class="row opts" id="patterns"></div>
+      <p class="hint" id="patternHint"></p>
       <div class="row vol" id="volRow"><label class="hint" for="optVol">Volume</label><input type="range" id="optVol" min="0" max="100" step="5" aria-label="Sound volume"></div>
       <div class="label">How are you this morning?</div>
       <div class="row" id="moods">
@@ -216,6 +226,22 @@ textarea::placeholder{color:var(--ink-dim)}
       </div>
       <input type="text" id="whenIn" placeholder="Or write your own, e.g. After the school run" maxlength="40" autocomplete="off" aria-label="When will you do it">
       <div class="row"><button class="go" id="btnWhen">Next</button></div>
+    </div>
+    <!-- Co-pilot: a short WOOP conversation (Wish, Outcome, Obstacle, Plan) -->
+    <div class="card talk" id="intendTalk" hidden>
+      <div class="label">Your co-pilot</div>
+      <p class="talkline" id="talkLine"></p>
+      <p class="hint" id="talkSub" hidden></p>
+      <div class="row" id="talkChips"></div>
+      <form class="talkform" id="talkForm" hidden><input type="text" id="talkIn" maxlength="140" autocomplete="off"><button class="go" type="submit">Next</button></form>
+      <div class="row"><button class="go" id="talkNext" hidden>Continue</button></div>
+      <button class="quiet" id="talkSkip" hidden>Skip this one</button>
+      <div class="care" id="talkCare" hidden>
+        <b id="talkCareHead">Thank you for telling me.</b>
+        <p>That sounds really heavy, and you deserve more support than an app can give. You don't have to plan anything today.</p>
+        <p>If you need to talk to someone now: <b>Samaritans</b>, call 116 123 (free, 24/7). <b>Shout</b>, text SHOUT to 85258 (free, 24/7). <b>NHS 111</b>, option 2 for mental health. If you can't keep yourself safe, call 999 or go to A&amp;E.</p>
+        <div class="row"><button class="ghost" id="talkCareFly">Just breathe for now</button></div>
+      </div>
     </div>
   </div>
 
@@ -360,6 +386,7 @@ textarea::placeholder{color:var(--ink-dim)}
       <div class="word" id="word"></div>
       <p class="said" id="intentBack"></p>
       <p class="hint" id="goalBack" hidden></p>
+      <div class="plancard" id="planCard" hidden></div>
       <canvas class="starsky" id="starSky" aria-hidden="true"></canvas>
       <p class="hint" id="skyLine"></p>
       <div class="coach" id="coachDay" hidden></div>
@@ -470,9 +497,13 @@ let rcPackages=[];
 async function loadPackages(){ const P=await rc(); if(!P) throw new Error('no store'); const {current}=await P.getOfferings(); rcPackages=(current&&current.availablePackages)||[]; return rcPackages; }
 async function refreshStore(){ if(!NATIVE) return; try{ storeUnavailable=!(await loadPackages()).length; }catch(e){ storeUnavailable=true; } }
 // Flight length (minutes), sound and vibration are remembered on this device.
-const prefs=Object.assign({len:2,sound:true,buzz:true,vol:70},store.prefs||{});
+const prefs=Object.assign({len:2,sound:true,buzz:true,vol:85,pattern:'calm'},store.prefs||{});
 const canBuzz=NATIVE||('vibrate' in navigator&&!/iPhone|iPad|iPod/.test(navigator.userAgent));
 function setPrefs(){
+  const pr=$('patterns'); if(!pr.childElementCount) Object.entries(PATTERNS).forEach(([k,v])=>{ const b=document.createElement('button'); b.className='chip'; b.dataset.pattern=k; b.textContent=v.label; pr.appendChild(b); });
+  pr.querySelectorAll('[data-pattern]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.pattern===prefs.pattern)));
+  $('patternHint').textContent=(PATTERNS[prefs.pattern]||PATTERNS.calm).hint;
+  if(typeof applyPattern==='function'&&SETTLE) applyPattern();
   store.prefs=prefs; save();
   document.querySelectorAll('[data-len]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.len===prefs.len)));
   $('optSound').setAttribute('aria-pressed',String(prefs.sound));
@@ -484,9 +515,19 @@ function setPrefs(){
 }
 
 // ---- flight plan: two breathing segments either side of the intention ----
-const SETTLE={name:'Settle', inh:4, exh:6, dur:40};
-const LIFT  ={name:'Lift',   inh:5, exh:5, dur:40, climb:true};
-const BREATHE={name:'Breathe', inh:4, exh:6, dur:120}; // "Just breathe": one long settle, any time of day
+// Breathing styles. Each step: [kind, seconds]. in/sip rise, hold stays level, out/hum sink.
+const PATTERNS={
+  calm:{label:'Calm', hint:'4 in, 6 out', steps:[['in',4],['out',6]]},
+  sigh:{label:'Cyclic sigh', hint:'In, a second sip in, long breath out. The Stanford trial winner.', steps:[['in',3],['sip',1],['out',6]]},
+  nhs:{label:'5 in, 7 out', hint:'The NHS calming pattern. The long out-breath is the point.', steps:[['in',5],['out',7]]},
+  box:{label:'Box', hint:'4 in, hold 4, 4 out, hold 4. Used by Navy SEALs and police.', steps:[['in',4],['hold',4],['out',4],['hold',4]]},
+  hum:{label:'Hum', hint:'Breathe in through the nose, hum it out. Humming boosts nasal nitric oxide.', steps:[['in',4],['hum',6]]}
+};
+const SETTLE={name:'Settle', dur:40};
+const LIFT  ={name:'Lift', dur:40, climb:true};
+const BREATHE={name:'Breathe', dur:120}; // "Just breathe": one long settle, any time of day
+const cycleOf=seg=>seg.steps.reduce((a,x)=>a+x[1],0);
+function applyPattern(){ const p=PATTERNS[prefs.pattern]||PATTERNS.calm; SETTLE.steps=LIFT.steps=BREATHE.steps=p.steps; }
 setPrefs();
 // Mornings in a row. A missed day ends the run, but nothing is taken away: the sky keeps every star.
 function streak(){
@@ -502,11 +543,22 @@ function bestStreak(){
 const runLine=()=>{ const n=streak(); return n>=2?`${n} mornings in a row`:''; };
 // Height of the light at a moment in a segment: rises on the in-breath, sinks on the out-breath.
 function laneAt(seg,st){
-  const cycle=seg.inh+seg.exh, k=((st%cycle)+cycle)%cycle;
-  const up = k<seg.inh ? 0.5-0.5*Math.cos(Math.PI*k/seg.inh) : 0.5+0.5*Math.cos(Math.PI*(k-seg.inh)/seg.exh);
+  const steps=seg.steps, cycle=cycleOf(seg); let k=((st%cycle)+cycle)%cycle, up=0, kind='in', left=0, len=1;
+  const hasSip=steps.some(x=>x[0]==='sip');
+  for(const [kd,sec] of steps){
+    const ease=x=>0.5-0.5*Math.cos(Math.PI*x);
+    if(k<sec){ const f=k/sec; kind=kd; left=sec-k; len=sec;
+      if(kd==='in') up=(hasSip?0.8:1)*ease(f);
+      else if(kd==='sip') up=0.8+0.2*ease(f);
+      else if(kd==='out'||kd==='hum') up=1-ease(f);
+      // hold keeps whatever level the previous step reached
+      break; }
+    k-=sec;
+    if(kd==='in') up=hasSip?0.8:1; else if(kd==='sip') up=1; else if(kd==='out'||kd==='hum') up=0;
+  }
   let base=0.72-0.44*up;
   if(seg.climb){ const f=Math.min(1,Math.max(0,st)/seg.dur); base-=0.14*f*f; }
-  return {y:base*H, k, up};
+  return {y:base*H, up, kind, left, len};
 }
 
 // ---- sound. Made in the browser, nothing to download. A low pad that opens as you breathe in and settles as you breathe out. ----
@@ -524,11 +576,14 @@ function soundStart(){
       const pan=ac.createPanner(); pan.panningModel='HRTF'; pan.distanceModel='inverse'; pan.refDistance=1; pan.rolloffFactor=0.6; if(pan.positionX){ pan.positionX.value=0; pan.positionY.value=-0.5; pan.positionZ.value=-1.5; } else pan.setPosition(0,-0.5,-1.5); pan.connect(out);
       const filt=ac.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=300; filt.Q.value=0.7; filt.connect(pan);
       const mk=(type,freq,detune,vol)=>{ const o=ac.createOscillator(); o.type=type; o.frequency.value=freq; o.detune.value=detune; const g=ac.createGain(); g.gain.value=vol; o.connect(g); g.connect(filt); o.start(); return o; };
-      mk('sine',110,0,0.5); mk('triangle',165,-6,0.18); mk('sine',220,8,0.12); mk('triangle',82.4,4,0.25);
+      mk('sine',110,0,0.5); mk('triangle',165,-6,0.18); mk('sine',220,8,0.12); mk('triangle',82.4,4,0.25); mk('sine',55,0,0.35); mk('sine',330,-4,0.05);
+      // a soft wash of air underneath, like wind past the wings
+      const nb=ac.createBuffer(1,ac.sampleRate*4,ac.sampleRate), nd=nb.getChannelData(0); let last=0; for(let i=0;i<nd.length;i++){ last=(last+0.02*(Math.random()*2-1))/1.02; nd[i]=last*3.5; }
+      const air=ac.createBufferSource(); air.buffer=nb; air.loop=true; const ag=ac.createGain(); ag.gain.value=0.5; air.connect(ag); ag.connect(filt); air.start();
       pad={out,filt,pan};
     }
     if(ac.state==='suspended') ac.resume();
-    pad.out.gain.setTargetAtTime(0.05,ac.currentTime,0.8);
+    pad.out.gain.setTargetAtTime(0.16,ac.currentTime,0.8);
   }catch(e){ ac=null; }
 }
 let lastSoundAt=0;
@@ -539,8 +594,8 @@ function soundBreath(up){ // up: 0 at the bottom of the out-breath, 1 at the top
   if(clock-lastSoundAt<0.1) return; lastSoundAt=clock;
   const a=clock*0.25, t=ac.currentTime; // a slow orbit, about 25 seconds round
   try{
-    glide(pad.out.gain,0.035+0.07*up,t,0.25);
-    glide(pad.filt.frequency,260+640*up,t,0.25);
+    glide(pad.out.gain,0.14+0.18*up,t,0.25);
+    glide(pad.filt.frequency,320+820*up,t,0.25);
     if(pad.pan.positionX){
       glide(pad.pan.positionX,Math.sin(a)*(1.2-0.6*up),t,0.3);
       glide(pad.pan.positionY,-0.8+1.8*up,t,0.3);
@@ -548,14 +603,14 @@ function soundBreath(up){ // up: 0 at the bottom of the out-breath, 1 at the top
     }
   }catch(e){}
 }
-function soundRest(){ if(ac&&pad) try{ glide(pad.out.gain,0.012,ac.currentTime,0.6); }catch(e){} }
+function soundRest(){ if(ac&&pad) try{ glide(pad.out.gain,0.1,ac.currentTime,0.6); glide(pad.filt.frequency,420,ac.currentTime,0.6); }catch(e){} } // keeps playing softly while you plan
 function soundStop(){ if(ac&&pad) try{ glide(pad.out.gain,0,ac.currentTime,1.2); }catch(e){} if(unlockEl) setTimeout(()=>{ try{ unlockEl.pause(); }catch(e){} },4000); }
 function bell(notes){ // a quiet bell at the end of each half of the flight
   if(!ac||!prefs.sound) return;
   const t0=ac.currentTime;
   notes.forEach(([f,at,vol])=>{ const o=ac.createOscillator(), g=ac.createGain(); o.type='sine'; o.frequency.value=f; g.gain.setValueAtTime(0,t0+at); g.gain.linearRampToValueAtTime(vol,t0+at+0.02); g.gain.exponentialRampToValueAtTime(0.0005,t0+at+2.4); o.connect(g); g.connect(master); o.start(t0+at); o.stop(t0+at+2.5); });
 }
-const BELL_SETTLE=[[523.25,0,0.08],[783.99,0.18,0.05]], BELL_LAND=[[523.25,0,0.08],[659.25,0.2,0.06],[783.99,0.4,0.06],[1046.5,0.7,0.04]];
+const BELL_SETTLE=[[523.25,0,0.16],[783.99,0.18,0.1]], BELL_LAND=[[523.25,0,0.16],[659.25,0.2,0.12],[783.99,0.4,0.12],[1046.5,0.7,0.08]];
 function buzz(pattern){
   if(!canBuzz||!prefs.buzz) return;
   if(Haptics){ // a light tap at each turn of the breath, a fuller one on landing
@@ -634,12 +689,12 @@ function update(dt){
   }
   if(state!=='fly') return;
   st+=dt; cam+=dt;
-  const L=laneAt(seg,st), inhaling=L.k<seg.inh;
+  const L=laneAt(seg,st), inhaling=L.kind==='in'||L.kind==='sip';
   soundBreath(L.up);
-  if(inhaling!==wasInhaling){ wasInhaling=inhaling; buzz(inhaling?40:[20,60,20]); } // a nudge at each turn of the breath
-  // Holding means breathing in: rise at the pace of an in-breath. Letting go sinks at the pace of an out-breath.
-  const travel=0.44*H;
-  const target=holding ? -travel/seg.inh : travel/seg.exh;
+  if(L.kind!==wasInhaling){ wasInhaling=L.kind; buzz(inhaling?40:L.kind==='hold'?15:[20,60,20]); } // a nudge at each turn of the breath
+  // Holding means breathing in: rise at the pace of an in-breath. Letting go sinks at the pace of an out-breath. A hold stays level.
+  const travel=0.44*H, inLen=Math.max(2,L.kind==='in'||L.kind==='sip'?L.len:4), outLen=Math.max(2,L.kind==='out'||L.kind==='hum'?L.len:6);
+  const target=L.kind==='hold'&&!holding ? 0 : holding ? -travel/inLen : travel/outLen;
   vy+=(target-vy)*Math.min(1,dt*3);
   y+=vy*dt;
   // a soft pull toward the light so you never drift far. No edges, no failure.
@@ -647,8 +702,10 @@ function update(dt){
   if(Math.abs(off)>soft) y-=(off-Math.sign(off)*soft)*Math.min(1,dt*1.2);
   y=Math.max(H*0.06,Math.min(H*0.94,y));
   trail.push(y); if(trail.length>40) trail.shift();
-  $('cue').textContent=inhaling?'Breathe in':'Breathe out';
-  $('cueSub').textContent=inhaling?(touched?`hold · ${seg.inh} seconds`:'press and hold the screen'):`let go · ${seg.exh} seconds`;
+  const CUE={in:'Breathe in',sip:'One more sip in',hold:'Hold',out:'Breathe out',hum:'Hum it out'};
+  const secs=Math.max(1,Math.ceil(L.left));
+  $('cue').textContent=CUE[L.kind];
+  $('cueSub').textContent=inhaling?(touched?`hold the screen · ${secs}`:'press and hold the screen'):L.kind==='hold'?`stay still · ${secs}`:L.kind==='hum'?`let go · hum gently · ${secs}`:`let go · ${secs}`;
   $('phase').textContent=`${seg.name} · ${Math.max(0,Math.ceil(seg.dur-st))}s`;
   if(st>=seg.dur){ if(seg===SETTLE){ bell(BELL_SETTLE); soundRest(); openIntend(); } else if(seg===BREATHE){ bell(BELL_LAND); buzz([40,80,40,80,80]); soundStop(); finishBreathe(); } else { bell(BELL_LAND); buzz([40,80,40,80,80]); soundStop(); land(); } }
 }
@@ -697,7 +754,14 @@ function drawOb(){
     $('obPoints').hidden=false; $('obLegal').hidden=false;
     next.hidden=false; next.textContent='Start the check'; next.onclick=()=>{ ob.step++; drawOb(); }; return;
   }
-  if(i-off<WHO5.length){ const j=i-off; $('obLabel').textContent=`${ob.recheck?'Two-week re-check':'Wellbeing'} · over the last two weeks · ${j+1} of 5`; q.textContent=WHO5[j]; setOpts(WHO5_OPTS,k=>ob.who[j]=k); return; }
+  if(!ob.recheck&&!store.name&&!ob.askedName){
+    $('obDots').innerHTML=''; $('obLabel').textContent='Your co-pilot'; q.textContent='First, what should I call you?';
+    const f=document.createElement('form'); f.className='talkform'; f.innerHTML='<input type="text" id="obName" maxlength="30" autocomplete="given-name" placeholder="Your first name"><button class="go" type="submit">Next</button>';
+    const inp=f.querySelector('input'); inp.addEventListener('keydown',e=>e.stopPropagation());
+    f.onsubmit=e=>{ e.preventDefault(); const n=clean(inp.value).split(/\s+/)[0]; if(!n) return inp.focus(); store.name=n.charAt(0).toUpperCase()+n.slice(1); save(); ob.askedName=true; drawOb(); };
+    opts.appendChild(f); setTimeout(()=>inp.focus({preventScroll:true}),60); return;
+  }
+  if(i-off<WHO5.length){ const j=i-off; $('obLabel').textContent=`${ob.recheck?'Two-week re-check':'Wellbeing'} · over the last two weeks · ${j+1} of 5`; q.textContent=(j===0&&store.name&&!ob.recheck?`Thanks, ${store.name}. Over the last two weeks: `:'')+WHO5[j]; setOpts(WHO5_OPTS,k=>ob.who[j]=k); return; }
   if(!ob.recheck&&i-off-WHO5.length<MEQ.length){ const j=i-off-WHO5.length; $('obLabel').textContent=`Body clock · ${j+1} of 5`; q.textContent=MEQ[j][0]; setOpts(MEQ[j][1].map(o=>o[0]),k=>ob.meq[j]=k); return; }
   // ---- result ----
   const who5=ob.who.reduce((a,v)=>a+v,0)*4, prof=store.profile||{};
@@ -711,13 +775,13 @@ function drawOb(){
   save();
   const p=store.profile, prev=hist.length>1?hist[hist.length-2].score:null;
   $('obLabel').textContent=ob.recheck?'Two weeks in':'Your flight plan';
-  q.textContent=ob.recheck?(who5>prev?'Your wellbeing score has gone up.':who5<prev?'Your wellbeing score has dipped.':'Your wellbeing score is steady.'):'Here\'s your starting point.';
+  q.textContent=ob.recheck?(who5>prev?'Your wellbeing score has gone up.':who5<prev?'Your wellbeing score has dipped.':'Your wellbeing score is steady.'):`Here's your starting point${store.name?', '+store.name:''}.`;
   res.hidden=false;
   res.innerHTML=ob.recheck
     ? `<span class="k">Wellbeing</span><div><b>${who5}/100</b> ${wellWord(who5)} · was ${prev} two weeks ago${Math.abs(who5-prev)>=10?'. That is a meaningful change.':'.'}</div><span class="k">Next</span><div>Keep flying. We'll check again in two weeks.</div>`
     : `<span class="k">Wellbeing</span><div><b>${who5}/100</b> ${wellWord(who5)}. Typical adults score around 60–70; a change of 10 points is meaningful.</div>
        <span class="k">Body clock</span><div><b>${p.chrono}</b><br>${CHRONO(p.meq)[1]}</div>
-       <span class="k">Your flight</span><div><b>${p.win}</b> Two slow minutes, one thing for the day. We'll re-check your score in two weeks.</div>`;
+       <span class="k">Your flight</span><div><b>${p.win}</b> Two slow minutes, then your co-pilot helps you plan one thing for the day. We'll re-check your score in two weeks.</div>`;
   $('obCare').hidden=who5>28;
   next.hidden=false; next.textContent=ob.recheck?'Carry on':'Take your first flight'; next.onclick=()=>openStart();
   if(!ob.recheck&&!store.savedResults){ $('obSave').hidden=false; $('obSaveMsg').textContent=''; }
@@ -816,7 +880,7 @@ document.querySelectorAll('[data-breathe]').forEach(b=>b.addEventListener('click
 }));
 function finishBreathe(){
   state='end'; clearCues(); $('phase').textContent='Landed';
-  const mins=Math.round(st/60*10)/10, breaths=Math.round(st/(BREATHE.inh+BREATHE.exh));
+  const mins=Math.round(st/60*10)/10, breaths=Math.round(st/cycleOf(BREATHE));
   const ex=store.extra||(store.extra={}); ex[todayKey]=(ex[todayKey]||0)+1; save();
   $('breatheHead').textContent=`${mins} minute${mins===1?'':'s'} · about ${breaths} breath${breaths===1?'':'s'}`;
   const T=['Slower than the day around you. That is the whole trick.','Come back whenever the day speeds up.','Nothing to win here. You just breathed.','Six breaths a minute is where most people feel the shift.'];
@@ -826,6 +890,7 @@ function finishBreathe(){
 $('btnBreatheDone').addEventListener('click',()=>breatheFrom==='ovEnd'?openEnd():openStart());
 $('optVol').addEventListener('input',()=>{ prefs.vol=+$('optVol').value; setPrefs(); });
 $('optVol').addEventListener('change',()=>{ soundStart(); bell([[659.25,0,0.05]]); }); // a short note so you can hear the level
+$('patterns').addEventListener('click',e=>{ const b=e.target.closest('[data-pattern]'); if(!b) return; prefs.pattern=b.dataset.pattern; setPrefs(); });
 $('opts').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b) return;
   if(b.dataset.len) prefs.len=+b.dataset.len;
@@ -839,13 +904,13 @@ function openIntend(){
   const chips=$('chips'); chips.innerHTML='';
   for(let i=0;i<4;i++){ const b=document.createElement('button'); b.className='chip'; const [text,when]=IDEAS[(dayIdx*4+i)%IDEAS.length]; b.textContent=text; if(when) b.dataset.when=when; chips.appendChild(b); }
   renderGoal();
-  $('intent').value=''; $('whenIn').value=''; $('intendWhat').hidden=false; $('intendWhen').hidden=true;
+  $('intent').value=''; $('whenIn').value=''; $('intendWhat').hidden=false; $('intendWhen').hidden=true; $('intendTalk').hidden=true;
   show('ovIntend');
 }
 function chooseIntent(text,when){
   text=text.trim(); if(!text) return $('intent').focus();
   today().intent=text;
-  if(when){ today().when=when; return lift(); }
+  if(when){ today().when=when; return copilot(); }
   $('intentEcho').textContent=`“${text}”`;
   $('intent').blur(); $('intendWhat').hidden=true; $('intendWhen').hidden=false;
 }
@@ -853,8 +918,75 @@ $('chips').addEventListener('click',e=>{ if(e.target.classList.contains('chip'))
 $('btnNext').addEventListener('click',()=>chooseIntent($('intent').value));
 $('intent').addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter') chooseIntent($('intent').value); });
 $('btnSkip').addEventListener('click',()=>{ delete today().intent; delete today().when; lift(); });
-$('intendWhen').addEventListener('click',e=>{ const w=e.target.dataset.when; if(!w) return; today().when=w; lift(); });
-function customWhen(){ const v=$('whenIn').value.trim(); if(!v) return $('whenIn').focus(); today().when=v; $('whenIn').blur(); lift(); }
+$('intendWhen').addEventListener('click',e=>{ const w=e.target.dataset.when; if(!w) return; today().when=w; copilot(); });
+function customWhen(){ const v=$('whenIn').value.trim(); if(!v) return $('whenIn').focus(); today().when=v; $('whenIn').blur(); copilot(); }
+
+// ---- co-pilot: WOOP (Oettingen). Picture the wish, then name the obstacle and make an if-then plan. ----
+const DISTRESS=/\b(suicid|kill myself|end it all|end my life|self[- ]?harm|hurt myself|can'?t go on|don'?t want to (be here|live)|no point (in )?living|want to die)\b/i;
+const JUNK=/^(n\/?a|na|no|none|nothing|idk|dunno|-+|\.+|x+|\?+|skip)$/i; // treat as a skip, never echo it back
+const nm=()=>store.name?`, ${store.name}`:'';
+const clean=t=>{ t=String(t||'').trim().replace(/[.!]+$/,''); return JUNK.test(t)?'':t; };
+const lc1=t=>t.replace(/^I /,'I ').replace(/^./,c=>c.toLowerCase());
+const OBSTACLES=['I’ll get pulled into messages','I’ll run out of energy','Something urgent will come up','I’ll put it off'];
+const PLANS={ 'I’ll get pulled into messages':'leave my phone in another room for 20 minutes','I’ll run out of energy':'do just 5 minutes of it','Something urgent will come up':'move it to straight after and protect that time','I’ll put it off':'start with the first two minutes, then decide' };
+let talk=[], ti=0, typeTok=0;
+async function typeLine(html){
+  const tok=++typeTok, node=$('talkLine');
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches){ node.innerHTML=html; return; }
+  const tmp=document.createElement('div'); tmp.innerHTML=html; const words=[];
+  (function walk(nd,wrap){ for(const c of [...nd.childNodes]){ if(c.nodeType===3) c.textContent.split(/(\s+)/).forEach(w=>w&&words.push({w,wrap})); else walk(c,c.tagName.toLowerCase()); } })(tmp,null);
+  node.innerHTML='';
+  for(const {w,wrap} of words){ if(tok!==typeTok) return; const sp=document.createElement(wrap||'span'); sp.textContent=w; if(w.trim()){ sp.classList.add('ghost'); setTimeout(()=>sp.classList.remove('ghost'),140); } node.appendChild(sp); if(w.trim()) await new Promise(r=>setTimeout(r,45)); }
+}
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function copilot(){
+  const d=today();
+  talk=[];
+  if(!store.name) talk.push({ask:'Before we plan it, what should I call you?',key:'name',ph:'Your first name',noSkip:true});
+  talk.push({say:()=>`Good${nm()}. Today’s one thing: <em>${esc(d.intent)}</em>.`});
+  talk.push({ask:'Why does that matter to you right now?',key:'why',ph:'Say it how you’d say it to a friend'});
+  talk.push({say:()=>{ const w=clean(d.why); return w?`That’s a real reason${nm()}. Hold on to it: <em>${esc(lc1(w))}</em>.`:`Fair enough. Some things just need doing.`; }});
+  talk.push({say:()=>`Now picture it done. It’s this evening and it’s finished. Notice how that feels.`});
+  talk.push({say:()=>`Now the honest bit${nm()}. Most manifesting skips this part. It’s the part that makes it work.`});
+  talk.push({ask:'What’s most likely to get in the way today?',key:'obstacle',ph:'Or write your own',chips:OBSTACLES});
+  talk.push({ask:()=>clean(d.obstacle)?'And when that happens, what will you do instead?':'If something does get in the way, what will you do?',sub:()=>clean(d.obstacle)?`“${clean(d.obstacle)}”`:'',key:'plan',ph:'Or write your own',chips:()=>{ const p=PLANS[d.obstacle]; return p?[p,'do 5 minutes of it anyway']:['do 5 minutes of it anyway','move it, but not drop it']; }});
+  talk.push({say:()=>{ const t=ifThen(d); return t?`Then that’s your flight plan: <em>${esc(t)}</em>`:`Then that’s your flight plan. One thing, done properly.`; },last:true});
+  ti=0; $('intendWhat').hidden=true; $('intendWhen').hidden=true; $('intendTalk').hidden=false; $('talkCare').hidden=true;
+  drawTalk();
+}
+function ifThen(d){
+  const o=clean(d.obstacle), p=clean(d.plan); if(!p) return '';
+  const cue=o?lc1(o).replace(/^i’ll |^i'll |^i will /,'I ').replace(/^I /,'I '):'something gets in the way';
+  return `If ${cue}, then I will ${lc1(p).replace(/^i will |^i’ll |^i'll /,'')}.`;
+}
+async function drawTalk(){
+  const step=talk[ti], d=today(), val=v=>typeof v==='function'?v():v;
+  ['talkSub','talkForm','talkNext','talkSkip'].forEach(id=>$(id).hidden=true); $('talkChips').innerHTML='';
+  if(step.say){
+    await typeLine(val(step.say));
+    $('talkNext').hidden=false; $('talkNext').textContent=step.last?'Take off':'Continue';
+    return;
+  }
+  await typeLine(val(step.ask));
+  const sub=val(step.sub); if(sub){ $('talkSub').hidden=false; $('talkSub').textContent=sub; }
+  const chips=val(step.chips)||[];
+  chips.forEach(t=>{ const b=document.createElement('button'); b.className='chip'; b.textContent=t; b.onclick=()=>answer(step,t); $('talkChips').appendChild(b); });
+  $('talkForm').hidden=false; const inp=$('talkIn'); inp.value=step.key==='name'?'':(d[step.key]||''); inp.placeholder=step.ph||''; inp.autocomplete=step.key==='name'?'given-name':'off';
+  setTimeout(()=>inp.focus({preventScroll:true}),60);
+  $('talkSkip').hidden=!!step.noSkip;
+}
+function answer(step,v){
+  v=String(v||'').trim();
+  if(DISTRESS.test(v)){ $('talkCareHead').textContent=`Thank you for telling me${nm()}.`; ['talkForm','talkNext','talkSkip'].forEach(id=>$(id).hidden=true); $('talkChips').innerHTML=''; $('talkLine').textContent=''; $('talkCare').hidden=false; return; }
+  if(step.key==='name'){ const n=clean(v).split(/\s+/)[0]; if(!n) return $('talkIn').focus(); store.name=n.charAt(0).toUpperCase()+n.slice(1,30); }
+  else today()[step.key]=clean(v);
+  save(); ti++; drawTalk();
+}
+$('talkForm').addEventListener('submit',e=>{ e.preventDefault(); answer(talk[ti],$('talkIn').value); });
+$('talkIn').addEventListener('keydown',e=>e.stopPropagation());
+$('talkSkip').addEventListener('click',()=>{ const st=talk[ti]; if(st.key) today()[st.key]=''; save(); ti++; drawTalk(); });
+$('talkNext').addEventListener('click',()=>{ if(talk[ti].last){ $('intendTalk').hidden=true; lift(); } else { ti++; drawTalk(); } });
+$('talkCareFly').addEventListener('click',()=>{ $('intendTalk').hidden=true; lift(); });
 $('btnWhen').addEventListener('click',customWhen);
 $('whenIn').addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter') customWhen(); });
 
@@ -884,8 +1016,8 @@ const lowerFirst=t=>t.charAt(0).toLowerCase()+t.slice(1);
 const intentLine=d=>d.intent ? `${whenLabel(d.when)}: ${d.intent}` : '';
 function lift(){
   save(); show(null); seg=LIFT; st=0; vy=0; wasInhaling=null; state='fly'; soundStart();
-  const line=intentLine(today());
-  if(line){ const c=$('carry'); c.textContent=line; c.classList.add('on'); setTimeout(()=>c.classList.remove('on'),9000); }
+  const d=today(), line=ifThen(d)||intentLine(d);
+  if(line){ const c=$('carry'); c.textContent=line; c.classList.add('on'); setTimeout(()=>c.classList.remove('on'),11000); }
 }
 function land(){
   const d=today(); d.done=true; d.full=!!d.full||!skipped; save(); openEnd();
@@ -896,6 +1028,13 @@ function openEnd(){
   $('word').textContent=word;
   $('intentBack').textContent=intentLine(d)||'Go gently.';
   $('goalBack').hidden=!store.goal; $('goalBack').textContent=store.goal?`Toward: ${store.goal}`:'';
+  const pc=$('planCard'), rows=[]; const it=ifThen(d);
+  if(d.intent&&(clean(d.why)||clean(d.obstacle)||it)){
+    if(clean(d.why)) rows.push(['Why it matters',esc(clean(d.why))]);
+    if(clean(d.obstacle)) rows.push(['Turbulence',esc(clean(d.obstacle))]);
+    if(it) rows.push(['Your if-then',`<span class="ifthen">${esc(it)}</span>`]);
+  }
+  pc.hidden=!rows.length; pc.innerHTML=rows.map(([k,v])=>`<span class="k">${k}</span><div>${v}</div>`).join('');
   $('skyLine').textContent=d.full ? `Morning #${n}${runLine()?` · ${runLine()}`:''}${streak()>=7&&streak()===bestStreak()?' · your best run':''}` : `You skipped the breathing, so no star today. Fly again to earn it.`;
   const cd=coachToday(); $('coachDay').hidden=!cd; if(cd) setCoach($('coachDay'),cd);
   const wk=weekData(), canWeek=weekButtons();
