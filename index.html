@@ -324,6 +324,8 @@ textarea::placeholder{color:var(--ink-dim)}
       <div class="acct" id="acctIn" hidden>
         <h2 id="acctWho"></h2>
         <p>Your mornings are saved to your account. Sign in with the same email on any phone to see them.</p>
+        <p class="hint" id="acctPlan" hidden></p>
+        <a class="ghost" id="acctManage" href="#" target="_blank" rel="noopener" hidden>Manage subscription</a>
         <button class="ghost" type="button" id="acctOut">Sign out</button>
         <button class="quiet" type="button" id="acctDelete">Delete my account and data</button>
         <div class="care" id="acctDeleteConfirm" hidden>
@@ -384,8 +386,10 @@ textarea::placeholder{color:var(--ink-dim)}
       </ul>
       <div class="row" id="payProducts"></div>
       <p class="hint" id="payMsg" aria-live="polite"></p>
+      <button class="go" id="btnPaySignIn" hidden>Sign in to subscribe</button>
       <div class="row"><button class="quiet" id="btnRestore">Restore purchases</button><button class="quiet" id="btnPayLater">Not now</button></div>
-      <p class="hint legal">Payment is charged to your Apple ID when the free trial ends. Renews automatically until cancelled in Settings. <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use</a> · <a href="https://themorningflight.co.uk/privacy.html" target="_blank" rel="noopener">Privacy</a></p>
+      <p class="hint legal" id="payLegalWeb" hidden>Secure checkout by Stripe. Renews automatically until you cancel, which you can do any time from Your account, Manage subscription. Works in the iPhone app too when you sign in with the same account. <a href="https://themorningflight.co.uk/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="https://themorningflight.co.uk/privacy.html" target="_blank" rel="noopener">Privacy</a></p>
+      <p class="hint legal" id="payLegalApp">Payment is charged to your Apple ID when the free trial ends. Renews automatically until cancelled in Settings. <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use</a> · <a href="https://themorningflight.co.uk/privacy.html" target="_blank" rel="noopener">Privacy</a></p>
     </div>
   </div>
 
@@ -499,6 +503,17 @@ const plugin=n=>{ try{ return NATIVE?(window.Capacitor.Plugins[n]||null):null; }
 const Haptics=plugin('Haptics'), LocalNotes=plugin('LocalNotifications'), NShare=plugin('Share'), NFiles=plugin('Filesystem'), NApple=plugin('SignInWithApple'), Purchases=plugin('Purchases');
 // Premium runs through RevenueCat. Public key from the RevenueCat dashboard (Morning Flight project > API keys).
 const REVENUECAT_KEY='appl_fbvtetoxXccIeNxKjZxqniJThqQ';
+// The website sells the same Premium through RevenueCat Web Billing (Stripe). Empty key = the website stays free.
+const RC_WEB_KEY='';
+const WEB_PAY=!NATIVE&&!!RC_WEB_KEY;
+let webRc=null, webRcUser=null;
+async function rcWeb(){ // the web SDK needs a signed-in user so a subscription follows them into the app
+  if(!WEB_PAY||!user) return null;
+  if(webRc&&webRcUser===user.id) return webRc;
+  if(webRc) await webRc.changeUser(user.id);
+  else{ const {Purchases:W}=await import('https://cdn.jsdelivr.net/npm/@revenuecat/purchases-js@1.69.0/+esm'); webRc=W.configure({apiKey:RC_WEB_KEY,appUserId:user.id}); }
+  webRcUser=user.id; return webRc;
+}
 let rcReady=null;
 function rc(){ // configure once, on first use
   if(!Purchases||!REVENUECAT_KEY) return null;
@@ -508,13 +523,25 @@ function rc(){ // configure once, on first use
 const hasPremium=info=>!!(info&&info.entitlements&&info.entitlements.active&&info.entitlements.active.premium);
 // In the app, the first flights are free, then Premium. The website is unchanged.
 const FREE_FLIGHTS=3;
-let premium=!NATIVE, storeUnavailable=false; // if the App Store has no products yet (TestFlight before launch), nothing is gated
-async function refreshPremium(){ const P=await rc(); if(!P) return; try{ const {customerInfo}=await P.getCustomerInfo(); premium=hasPremium(customerInfo); }catch(e){} }
+let premium=!NATIVE&&!WEB_PAY, storeUnavailable=false; // if the App Store has no products yet (TestFlight before launch), nothing is gated
+async function refreshPremium(){
+  if(WEB_PAY){ try{ const W=await rcWeb(); premium=W?hasPremium(await W.getCustomerInfo()):false; }catch(e){ console.warn('Web billing',e); } return; }
+  const P=await rc(); if(!P) return; try{ const {customerInfo}=await P.getCustomerInfo(); premium=hasPremium(customerInfo); }catch(e){} }
 const flightsFlown=()=>Object.values(store.days).filter(d=>d.done).length;
 const freeLeft=()=>Math.max(0,FREE_FLIGHTS-flightsFlown());
-const needsPay=()=>NATIVE&&!premium&&!storeUnavailable&&freeLeft()===0;
+const needsPay=()=>(NATIVE||WEB_PAY)&&!premium&&!storeUnavailable&&freeLeft()===0;
 let rcPackages=[];
-async function loadPackages(){ const P=await rc(); if(!P) throw new Error('no store'); const {current}=await P.getOfferings(); rcPackages=(current&&current.availablePackages)||[]; return rcPackages; }
+async function loadPackages(){
+  if(WEB_PAY){ const W=await rcWeb(); if(!W) throw new Error('signin'); const {current}=await W.getOfferings(); rcPackages=(current&&current.availablePackages)||[]; return rcPackages; }
+  const P=await rc(); if(!P) throw new Error('no store'); const {current}=await P.getOfferings(); rcPackages=(current&&current.availablePackages)||[]; return rcPackages; }
+const isoSpan=d=>{ const m=/P(\d+)([DWMY])/.exec(d||''); if(!m) return ''; const n=+m[1], u={D:'day',W:'week',M:'month',Y:'year'}[m[2]]; return `${n} ${u}${n>1?'s':''}`; };
+// Web and app SDKs describe products differently; reduce both to what the paywall shows.
+function planOf(k){
+  if(WEB_PAY){ const pr=k.webBillingProduct||k.rcBillingProduct||k.product, so=pr.defaultSubscriptionOption, tr=so&&(so.trial||so.freeTrialPhase);
+    return {id:k.identifier, price:pr.currentPrice.formattedPrice, period:/Y/.test(pr.normalPeriodDuration||'')||k.packageType==='$rc_annual'?'year':'month', trial:tr?isoSpan(tr.periodDuration):''}; }
+  const pr=k.product, sub=pr.subscriptionPeriod||'', intro=pr.introPrice;
+  return {id:k.identifier, price:pr.priceString, period:/Y/.test(sub)||k.packageType==='ANNUAL'?'year':'month', trial:intro&&intro.price===0?`${intro.periodNumberOfUnits} ${String(intro.periodUnit||'').toLowerCase()}${intro.periodNumberOfUnits>1?'s':''}`:''};
+}
 async function refreshStore(){ if(!NATIVE) return; try{ storeUnavailable=!(await loadPackages()).length; }catch(e){ storeUnavailable=true; } }
 // Flight length (minutes), sound and vibration are remembered on this device.
 const prefs=Object.assign({len:2,sound:true,buzz:true,vol:85,pattern:'calm'},store.prefs||{});
@@ -826,9 +853,11 @@ async function openPay(from){
   payFrom=from||'ovStart'; show('ovPay');
   const box=$('payProducts'); box.innerHTML=''; $('payMsg').textContent='Loading…';
   $('btnPayLater').textContent=freeLeft()?'Not now':'Back';
+  $('btnRestore').hidden=WEB_PAY; $('payLegalApp').hidden=WEB_PAY; $('payLegalWeb').hidden=!WEB_PAY; $('btnPaySignIn').hidden=true;
+  if(WEB_PAY&&!user){ $('payMsg').textContent='Sign in first, so Premium follows you to the iPhone app too.'; $('btnPaySignIn').hidden=false; return; }
   try{
     const pk=await loadPackages(); if(!pk.length) throw new Error('none');
-    const products=pk.map(k=>{ const pr=k.product, sub=pr.subscriptionPeriod||'', intro=pr.introPrice; return {id:k.identifier, price:pr.priceString, period:/Y/.test(sub)||k.packageType==='ANNUAL'?'year':'month', trial:intro&&intro.price===0?`${intro.periodNumberOfUnits} ${String(intro.periodUnit||'').toLowerCase()}${intro.periodNumberOfUnits>1?'s':''}`:''}; });
+    const products=pk.map(planOf);
     for(const p of products.sort((a,b)=>a.period==='month'?-1:1)){
       const b=document.createElement('button'); b.className='plan'+(p.period==='year'?' best':''); b.dataset.id=p.id;
       b.innerHTML=`<small>${p.period==='year'?'Yearly · best value':'Monthly'}</small><b>${p.price}</b><small>${p.trial?`${p.trial} free, then `:''}per ${p.period}</small>`;
@@ -839,14 +868,16 @@ async function openPay(from){
 }
 $('payProducts').addEventListener('click',async e=>{
   const b=e.target.closest('.plan'); if(!b) return;
-  $('payMsg').textContent='Opening App Store…';
+  $('payMsg').textContent=WEB_PAY?'Opening secure checkout…':'Opening App Store…';
   try{
-    const P=await rc(), pkg=rcPackages.find(k=>k.identifier===b.dataset.id);
-    const {customerInfo}=await P.purchasePackage({aPackage:pkg});
+    const pkg=rcPackages.find(k=>k.identifier===b.dataset.id); let customerInfo;
+    if(WEB_PAY){ const W=await rcWeb(); ({customerInfo}=await W.purchase({rcPackage:pkg,customerEmail:user.email||undefined})); }
+    else{ const P=await rc(); ({customerInfo}=await P.purchasePackage({aPackage:pkg})); }
     premium=hasPremium(customerInfo);
     if(premium){ $('payMsg').textContent='Welcome to Premium.'; setTimeout(()=>payFrom==='ovEnd'?openEnd():openStart(),800); } else $('payMsg').textContent='';
-  }catch(err){ $('payMsg').textContent=/cancel/i.test(String(err.message||err))?'':String(err.message||err); }
+  }catch(err){ $('payMsg').textContent=err&&err.errorCode===1||/cancel/i.test(String(err.message||err))?'':String(err.message||err); }
 });
+$('btnPaySignIn').addEventListener('click',()=>openAccount('ovPay'));
 $('btnRestore').addEventListener('click',async()=>{ $('payMsg').textContent='Checking…'; try{ const P=await rc(); const {customerInfo}=await P.restorePurchases(); premium=hasPremium(customerInfo); $('payMsg').textContent=premium?'Restored. Welcome back.':'No subscription found for this Apple ID.'; if(premium) setTimeout(()=>openStart(),800); }catch(e){ $('payMsg').textContent='Could not check. Try again.'; } });
 $('btnFirstOffer').addEventListener('click',()=>openPay('ovEnd'));
 $('btnPayLater').addEventListener('click',()=>payFrom==='ovEnd'?openEnd():openStart());
@@ -872,7 +903,7 @@ function openStart(reply){
   const n=starCount();
   $('starsLine').textContent=(n?`${n} star${n>1?'s':''} in your sky`:'Your first star is waiting')+(runLine()?` · ${runLine()}`:'');
   document.querySelector('#ovStart [data-log]').hidden=!n;
-  if(NATIVE&&!premium&&!storeUnavailable) $('starsLine').textContent+=freeLeft()?` · ${freeLeft()} free flight${freeLeft()===1?'':'s'} left`:' · free flights used';
+  if((NATIVE||WEB_PAY)&&!premium&&!storeUnavailable) $('starsLine').textContent+=freeLeft()?` · ${freeLeft()} free flight${freeLeft()===1?'':'s'} left`:' · free flights used';
   if(window.accountUI) accountUI();
   if(!reply&&recheckDue()){ setCoach(cr,['Two weeks in. Five quick questions to see where your wellbeing score is now.','']); const b=document.createElement('button'); b.className='ghost'; b.textContent='Check in'; b.style.marginTop='8px'; b.onclick=()=>openOnboard({recheck:true}); cr.appendChild(b); }
   show('ovStart');
@@ -1067,7 +1098,7 @@ function openEnd(){
   const wk=weekData(), canWeek=weekButtons();
   $('btnWeekReady').hidden=!(canWeek&&now.getDay()===0&&!(store.reflections||{})[wk.key]);
   $('shareMsg').textContent='';
-  const offer=NATIVE&&!premium&&!storeUnavailable&&flightsFlown()===1;
+  const offer=(NATIVE||WEB_PAY)&&!premium&&!storeUnavailable&&flightsFlown()===1;
   $('firstOffer').hidden=!offer;
   if(offer){ const p=store.profile||{}; $('firstOfferLine').textContent=`${p.win?`Your ${p.win} flight, `:''}sound, your log and your two-week wellbeing re-check. Free for 7 days, then £4.99 a month or £39.99 a year. Cancel any time.`; }
   showRemind(); if(window.accountUI) accountUI();
@@ -1414,10 +1445,14 @@ function openAccount(from){
   $('acctEmail').hidden=!!user; $('acctCode').hidden=true; $('acctIn').hidden=!user; $('acctDeleteConfirm').hidden=true;
   $('acctApple').hidden=!!user||!NApple; $('acctEmailHead').textContent=NApple?'Or sign in with your email':'Sign in with your email';
   if(user) $('acctWho').textContent=user.email||'Signed in with Apple';
+  $('acctPlan').hidden=$('acctManage').hidden=true;
+  if(user&&WEB_PAY) rcWeb().then(W=>W&&W.getCustomerInfo()).then(ci=>{ if(!ci) return; premium=hasPremium(ci);
+    $('acctPlan').hidden=false; $('acctPlan').textContent=premium?'Morning Flight Premium':'Free plan';
+    if(ci.managementURL){ $('acctManage').href=ci.managementURL; $('acctManage').hidden=false; } }).catch(()=>{});
   $('acctMsg').textContent='';
   show('ovAccount');
 }
-function closeAccount(){ acctFrom==='ovEnd'?openEnd():acctFrom==='ovLog'?openLog(logFrom):openStart(); }
+function closeAccount(){ if(acctFrom==='ovPay'&&user) return openPay(payFrom); acctFrom==='ovEnd'?openEnd():acctFrom==='ovLog'?openLog(logFrom):openStart(); }
 document.querySelectorAll('[data-account],[data-account-open]').forEach(b=>b.addEventListener('click',()=>openAccount(b.closest('.overlay').id)));
 $('acctClose').addEventListener('click',closeAccount);
 for(const id of ['acctEmailIn','acctCodeIn']) $(id).addEventListener('keydown',e=>e.stopPropagation());
@@ -1454,6 +1489,7 @@ $('acctCode').addEventListener('submit',async e=>{
   try{ await pullAndMerge(); }catch(err){ $('acctMsg').textContent=`Signed in, but syncing failed: ${err.message}`; }
   if(window.OneSignalDeferred) OneSignalDeferred.push(OS=>OS.login(user.id));
   rc()&&rc().then(P=>P&&P.logIn({appUserID:user.id}).then(r=>{ premium=hasPremium(r.customerInfo); }).catch(()=>{}));
+  if(WEB_PAY) await refreshPremium();
   accountUI(); closeAccount();
 });
 function wipeLocal(){ try{ localStorage.removeItem(KEY); }catch(e){} store={id:'',days:{}}; }
@@ -1476,6 +1512,7 @@ $('acctOut').addEventListener('click',async()=>{
   await pushNow(); await sb.auth.signOut(); user=null;
   if(window.OneSignalDeferred) OneSignalDeferred.push(OS=>OS.logout());
   rc()&&rc().then(P=>P&&P.logOut().then(r=>{ premium=hasPremium(r.customerInfo); }).catch(()=>{}));
+  if(WEB_PAY) premium=false;
   accountUI(); closeAccount();
 });
 async function startAccount(){
@@ -1488,6 +1525,7 @@ async function startAccount(){
     if(location.hash.includes('access_token')||location.hash.includes('error')) history.replaceState(null,'',location.pathname);
     if(user&&window.OneSignalDeferred) OneSignalDeferred.push(OS=>OS.login(user.id));
     if(user) rc()&&rc().then(P=>P&&P.logIn({appUserID:user.id}).then(r=>{ premium=hasPremium(r.customerInfo); if(!$('ovStart').hidden) openStart(); }).catch(()=>{}));
+    if(user&&WEB_PAY) refreshPremium().then(()=>{ if(!$('ovStart').hidden) openStart(); });
     if(user){ await pullAndMerge(); refreshScreen(); }
   }catch(err){ console.warn('Account unavailable',err); }
   accountUI();
