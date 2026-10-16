@@ -504,7 +504,9 @@ const Haptics=plugin('Haptics'), LocalNotes=plugin('LocalNotifications'), NShare
 // Premium runs through RevenueCat. Public key from the RevenueCat dashboard (Morning Flight project > API keys).
 const REVENUECAT_KEY='appl_fbvtetoxXccIeNxKjZxqniJThqQ';
 // The website sells the same Premium through RevenueCat Web Billing (Stripe). Empty key = the website stays free.
-const RC_WEB_KEY='';
+// Sandbox (Stripe test mode) on localhost; the live key only once WEB_LIVE is switched on.
+const WEB_LIVE=true;
+const RC_WEB_KEY=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)?'rcb_sb_gncneGWSFTzBtrjqyDuMEnaqX':WEB_LIVE?'rcb_rapHYZnzrnaJHgwVMGPSUebUikfg':'';
 const WEB_PAY=!NATIVE&&!!RC_WEB_KEY;
 let webRc=null, webRcUser=null;
 async function rcWeb(){ // the web SDK needs a signed-in user so a subscription follows them into the app
